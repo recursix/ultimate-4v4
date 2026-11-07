@@ -58,19 +58,29 @@ button,input,select{font:inherit;color:inherit}
 .app{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px;align-items:start;padding-block:16px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .main{display:flex;flex-direction:column;gap:10px;min-width:0}
 .boardrow{display:grid;grid-template-columns:34px minmax(0,1fr);gap:8px}
+.scorebar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px}
+.scorebar .sc{display:flex;align-items:baseline;gap:8px;font-family:var(--f-display);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.scorebar .sc b{font-size:34px;line-height:1;min-width:1ch;text-align:center}
+.scorebar .sc span{font-size:15px}
+.scorebar .o b,.scorebar .o span{color:var(--off-2)} .scorebar .d b,.scorebar .d span{color:var(--def)}
+.scorebar .to{font-size:12px;color:var(--muted);font-family:var(--f-display);letter-spacing:.12em;text-transform:uppercase}
+.scorebar .pts{display:flex;flex-wrap:wrap;gap:4px;margin-left:auto}
+.scorebar .pt{font-size:12px;border-radius:6px;padding:2px 7px;border:1px solid var(--line);background:var(--panel);white-space:nowrap}
+.scorebar .pt.o{border-color:var(--off)} .scorebar .pt.d{border-color:var(--def)}
+.scorebar .pt i{font-style:normal;font-family:var(--f-display);font-weight:700;margin-right:4px}
 .evalbar{position:relative;border-radius:8px;overflow:hidden;background:var(--def);border:1px solid var(--line)}
 .evalbar .fill{position:absolute;left:0;right:0;bottom:0;background:var(--off);transition:height .25s}
 .evalbar .num{position:absolute;left:0;right:0;text-align:center;font-family:var(--f-display);font-weight:700;font-size:14px;color:var(--off-ink);bottom:4px}
 .board{position:relative;border-radius:10px;overflow:hidden;background:var(--ez);user-select:none;-webkit-user-select:none}
 .board svg{display:block;width:100%;height:auto;touch-action:none}
 .clock{position:absolute;left:8px;top:6px;font-family:var(--f-mono);font-size:12px;color:var(--chalk);pointer-events:none;font-variant-numeric:tabular-nums}
-.banner{position:absolute;left:50%;top:6px;transform:translateX(-50%);max-width:calc(100% - 12px);background:var(--panel);color:var(--ink);border-radius:10px;padding:6px 10px 6px 14px;box-shadow:0 4px 18px rgb(0 0 0 / .3);display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;justify-content:center;text-align:center}
+.banner{position:absolute;left:50%;top:8.4%;transform:translate(-50%,-50%);max-width:calc(100% - 12px);background:var(--panel);color:var(--ink);border-radius:10px;padding:6px 10px 6px 14px;box-shadow:0 4px 18px rgb(0 0 0 / .3);display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;justify-content:center;text-align:center}
 .banner b{font-family:var(--f-display);font-size:20px;line-height:1;text-transform:uppercase;letter-spacing:.03em}
 .banner b.goal{color:var(--off-2)} .banner b.blue{color:var(--def)} .banner b.setup{color:var(--muted)}
 .banner .hint{margin:0;font-size:13px}
 .banner .btn{padding:4px 10px;font-size:13px}
 .board.dead svg{filter:saturate(.45) brightness(.92);transition:filter .3s}
-@media (max-width:600px){ .board{display:flex;flex-direction:column} .board .banner{order:-1;position:static;transform:none;max-width:none;border-radius:0;box-shadow:none} .banner{padding:4px 8px;gap:2px 8px} .banner b{font-size:16px} .banner .hint{font-size:11.5px} .board.dead .clock{opacity:0} .board.dead::after{bottom:22px;font-size:11px} }
+@media (max-width:600px){ .banner{padding:3px 8px;gap:0 8px} .banner .btn{padding:2px 8px;font-size:12px} .banner b{font-size:16px} .banner .hint{font-size:11.5px} .board.dead .clock{opacity:0} .board.dead::after{bottom:22px;font-size:11px} }
 .board.dead::after{content:"NOT LIVE";position:absolute;right:10px;bottom:30px;font-family:var(--f-display);font-weight:700;letter-spacing:.2em;font-size:13px;color:#fff;opacity:.7;pointer-events:none}
 .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .controls .grow{flex:1}
@@ -151,6 +161,7 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
 
 <div class="app">
   <main class="main">
+    <div class="scorebar" id="scorebar"></div>
     <div class="boardrow">
       <div class="evalbar" id="evalbar" title="Chance the offense scores this possession"><div class="fill" id="evalfill"></div><div class="num" id="evalnum"></div></div>
       <div class="board" id="board">
@@ -167,7 +178,7 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
       <button class="btn" id="tele" aria-pressed="false" title="Drag any player without time passing (or hold Shift)">Teleport</button>
       <div class="scrub"><label for="hist">Time</label><input type="range" id="hist" min="0" max="0" value="0"><span id="histt"></span></div>
     </div>
-    <p class="hint">Drag <b>any player</b>: time moves with them and everyone else reacts. Stop moving and time stops. A fast drag sprints and uses up the player's burst (the ring that appears around them); a slow drag (or <kbd>Alt</kbd>) jogs and refills it. Players lay out for discs just out of reach, about half come up with it, and they need a moment to get up. Click a player to see their options. <kbd>Shift</kbd>+drag (or Teleport) moves a player without time passing. <kbd>←</kbd> <kbd>→</kbd> step time by 0.25 s (<kbd>Shift</kbd> for 1 s), <kbd>Space</kbd> waits 0.5 s. <kbd>Shift</kbd>+click an attacker to give them the disc. Click any arrow to play it (it plays out at 2×): a purple line throws, a yellow arrow runs that option, a white arrow plays on until that player finishes their move. Play is continuous: after a turnover the other team picks up the disc and attacks the other way (Orange attacks right, Blue left), after a goal the disc stays where it was caught and the other team brings it in from there: everyone walks to a line-up (the field greys out: not live), then the handler picks up the disc and presents it. Drag anyone to change the line-up and press Disc in. <kbd>N</kbd> plays on when you are stepping by hand. Players have bodies: they can't run through each other and steer around traffic. Very short, fast passes are hard to read and get dropped more often (a 3 m flick about 30%), so the AI prefers a push or a floaty touch pass up close, which is slower and easier to get a hand on. A disc that passes inside a defender's reach is usually blocked, so the AI curves around them or goes over the top; the disc is drawn tilted (a banked around throw is an oval, a hammer flies upside down and nearly on edge, and is harder to catch). A defender screened off their player calls a pick: play stops, they walk back, and the disc is checked in at the stall reached plus one (a disc caught by their player during the pick goes back to the thrower).</p>
+    <p class="hint">Drag <b>any player</b>: time moves with them and everyone else reacts. Stop moving and time stops. A fast drag sprints and uses up the player's burst (the ring that appears around them); a slow drag (or <kbd>Alt</kbd>) jogs and refills it. Players lay out for discs just out of reach, about half come up with it, and they need a moment to get up. Click a player to see their options. <kbd>Shift</kbd>+drag (or Teleport) moves a player without time passing. <kbd>←</kbd> <kbd>→</kbd> step time by 0.25 s (<kbd>Shift</kbd> for 1 s), <kbd>Space</kbd> waits 0.5 s. <kbd>Shift</kbd>+click an attacker to give them the disc. Click any arrow to play it (it plays out at 2×): a purple line throws, a yellow arrow runs that option, a white arrow plays on until that player finishes their move. Play is continuous: after a turnover the other team picks up the disc and attacks the other way (Orange attacks right, Blue left), after a goal the disc stays where it was caught and the other team brings it in from there: everyone walks to a line-up (the field greys out: not live), then the handler picks up the disc and presents it. Drag anyone to change the line-up and press Disc in. <kbd>N</kbd> plays on when you are stepping by hand. Players have bodies: they can't run through each other and steer around traffic. Very short, fast passes are hard to read and get dropped more often (a 3 m flick about 30%), so the AI prefers a push or a floaty touch pass up close, which is slower and easier to get a hand on. Games go to 7; a defender who intercepts in the endzone the offense attacks scores a Callahan, and the team that threw it restarts from its own goal line. Throwers are patient early in the count and take riskier throws as the stall climbs. A disc that passes inside a defender's reach is usually blocked, so the AI curves around them or goes over the top; the disc is drawn tilted (a banked around throw is an oval, a hammer flies upside down and nearly on edge, and is harder to catch). A defender screened off their player calls a pick: play stops, they walk back, and the disc is checked in at the stall reached plus one (a disc caught by their player during the pick goes back to the thrower).</p>
   </main>
 
   <aside class="panel" id="panel">
@@ -298,6 +309,7 @@ function autoLoop(ts){
   if (n > 0 && S && !S.done) { autoAcc -= n * 0.05; G.advance(S, n * 0.05, -1); pushHist(); render(); }
   if (S && S.done) {   // show the result for a moment, then the other team takes it
     autoAcc = 0;   // don't bank time during the pause (it used to fast-forward afterwards)
+    if (S.done.gameOver) { autoOn = false; $('#auto').setAttribute('aria-pressed', false); render(); return; }
     if (doneAt == null) { doneAt = ts; render(); }
     else if (ts - doneAt > 1400) { doneAt = null; playOn(); }
   } else doneAt = null;
@@ -413,7 +425,7 @@ function panel(){
   $('#evalfill').style.background = s.flipped ? 'var(--def)' : ''; $('#evalbar').style.background = s.flipped ? 'var(--off)' : '';
   $('#evalnum').style.color = s.flipped ? 'var(--def-ink)' : ''; $('#evalnum').textContent = Math.round(v * 100);
   $('#evbig').textContent = ready ? pct(v) : '–';
-  $('#evtxt').textContent = !ready ? 'Loading the engine…' : s.done ? s.done.text : s.setup ? `chance ${s.flipped ? 'Blue' : 'Orange'} scores, once the disc is in` : s.holder >= 0 ? `chance ${s.flipped ? 'Blue' : 'Orange'} scores this possession` : 'expected, with the disc in the air';
+  $('#evtxt').textContent = !ready ? 'Loading the engine…' : s.done ? (s.done.reason === 'goal' ? `Goal for ${s.done.team ? 'Blue' : 'Orange'}: ${s.done.text}` : s.done.text) : s.setup ? `chance ${s.flipped ? 'Blue' : 'Orange'} scores, once the disc is in` : s.holder >= 0 ? `chance ${s.flipped ? 'Blue' : 'Orange'} scores this possession` : 'expected, with the disc in the air';
   // sparkline
   const pts = evals.filter(e => e[0] <= s.t + 1e-6), tmax = Math.max(4, s.t);
   $('#spark').innerHTML = `<line class="base" x1="0" y1="23" x2="300" y2="23"/>` + (pts.length > 1 ? `<path d="${pts.map((e, i) => (i ? 'L' : 'M') + r2(e[0] / tmax * 300) + ' ' + r2(46 - e[1] * 46)).join('')}"/>` : '');
@@ -451,22 +463,26 @@ function panel(){
   const b = $('#banner');
   const team = s.flipped ? 'Blue' : 'Orange', other = s.flipped ? 'Orange' : 'Blue';
   if (s.done) {
-    const goal = s.done.reason === 'goal', who = goal ? team : other, cls = (who === 'Orange') ? 'goal' : 'blue';
-    const txt = goal ? `${team} scores` : `Turnover: ${other}'s disc`;
-    b.hidden = false; b.innerHTML = `<b class="${cls}">${txt}</b><span class="hint">${esc(goal ? `Orange ${s.score[0]} : ${s.score[1]} Blue` : s.done.text.replace(/^Turnover: /, ''))}</span>` +
-      (autoOn ? '' : `<span><button class="btn" data-act="back2">Back 2 s</button> <button class="btn primary" data-act="next">${goal ? 'Next point' : 'Play on'}</button></span>`);
+    const d = s.done, pt = d.reason === 'goal' || d.reason === 'callahan', who = pt ? (d.team ? 'Blue' : 'Orange') : other, cls = (who === 'Orange') ? 'goal' : 'blue';
+    const txt = d.gameOver ? `${who} wins ${Math.max(...s.score)}-${Math.min(...s.score)}` : d.reason === 'callahan' ? `Callahan! ${who} scores` : pt ? `${who} scores` : `Turnover: ${other}'s disc`;
+    b.hidden = false; b.innerHTML = `<b class="${cls}">${txt}</b><span class="hint">${esc(pt ? `${d.reason === 'callahan' ? d.text.replace(/^Callahan! /, '') : d.text} · Orange ${s.score[0]} : ${s.score[1]} Blue` : d.text.replace(/^Turnover: /, ''))}</span>` +
+      (d.gameOver ? `<span><button class="btn" data-act="back2">Back 2 s</button> <button class="btn primary" data-act="again">New game</button></span>` : autoOn ? '' : `<span><button class="btn" data-act="back2">Back 2 s</button> <button class="btn primary" data-act="next">${pt ? 'Next point' : 'Play on'}</button></span>`);
   } else if (s.setup) {
     const st = s.setup, hn = st.handler != null ? LABELS[PIDS[st.handler]] : 'The handler';
     if (st.kind === 'pick') {
       const dn = LABELS[PIDS[st.picked]], on = LABELS[PIDS[st.picked - 4]];
       b.hidden = false; b.innerHTML = `<b class="setup">Pick</b><span class="hint">${st.checkAt != null ? `${LABELS[PIDS[s.holder]] || ''} checks the disc in · stall ${Math.floor(s.stall)}` : `play stopped · ${dn} goes back to ${on}`}</span>` + (!autoOn ? `<span><button class="btn primary" data-act="discin">Disc in</button></span>` : '');
     } else {
-    const msg = s.holder >= 0 ? `${hn} presents the disc` : st.go ? `${hn} goes to the disc` : `${team}'s disc where the goal was caught · ${st.hold ? 'arrange, then Disc in' : 'drag anyone to rearrange'}`;
+    const msg = s.holder >= 0 ? `${hn} presents the disc` : st.go ? `${hn} goes to the disc` : `${team}'s disc ${st.after === 'callahan' ? 'on the goal line after the Callahan' : 'where the goal was caught'} · ${st.hold ? 'arrange, then Disc in' : 'drag anyone to rearrange'}`;
     b.hidden = false; b.innerHTML = `<b class="setup">Lining up</b><span class="hint">${msg}</span>` + (!autoOn && (!st.go || (s.holder >= 0 && st.hold)) ? `<span><button class="btn primary" data-act="discin">Disc in</button></span>` : '');
     }
   } else b.hidden = true;
   $('#board').classList.toggle('dead', !!(s.done || s.setup));
   const hs = $('#hist'); hs.max = Math.max(0, hist.length - 1); hs.value = hi; $('#histt').textContent = `${S.t.toFixed(1)} s`;
+  // scoreboard: the score, game to 7, and how each point was scored
+  const sc = s.score || [0, 0], ptl = s.points || [];
+  $('#scorebar').innerHTML = `<span class="sc o"><span>Orange</span><b>${sc[0]}</b></span><span class="to">game to ${G.GAME_TO}</span><span class="sc d"><b>${sc[1]}</b><span>Blue</span></span>` +
+    `<span class="pts">${ptl.map(p => `<span class="pt ${p.team ? 'd' : 'o'}" title="${p.t.toFixed(1)} s"><i>${p.score[0]}-${p.score[1]}</i>${p.how === 'callahan' ? 'Callahan ' + esc(p.text.replace(/^Callahan! /, '').split(' ')[0]) : esc(p.text)}</span>`).join('')}</span>`;
 }
 function computeOpts(){
   opts = [];

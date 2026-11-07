@@ -9,11 +9,15 @@
 
   const FIELD = { L: 30, W: 18, ez: 3, brick: 2 };
   const L = FIELD.L, W = FIELD.W, GOAL_X = L - FIELD.ez;
-  const SUB = 0.05, DECIDE = 0.5, STALL = 8, LOOK = 1.0, TAU = 0.85, TAU_BRAKE = 0.3, TAU_SPRINT = SIM.P.tauSprint;   // explosive first steps when sprinting
+  const SUB = 0.05, DECIDE = 0.5, STALL = 8;
+  let LOOK = 1.2; const TAU = 0.85, TAU_BRAKE = 0.3, TAU_SPRINT = SIM.P.tauSprint;   // explosive first steps when sprinting
   const PIDS = ['O1', 'O2', 'O3', 'O4', 'D1', 'D2', 'D3', 'D4'];
   const LABELS = { O1: 'H1', O2: 'H2', O3: 'C1', O4: 'C2', D1: 'D1', D2: 'D2', D3: 'D3', D4: 'D4' };
   const PLAY = { field: FIELD, labels: LABELS, defense: 'person', stall: STALL };
   const CATCH_RADIUS = 1.5;
+  // Patience: early in the count a rec thrower only throws a clearly open look; the bar drops as the stall climbs.
+  let PATIENCE = { p0: 0.95, slope: 0.06, floor: 0.55 };
+  const patience = stall => Math.max(PATIENCE.floor, PATIENCE.p0 - PATIENCE.slope * stall);
   let RISK = 0.4; const PRIOR_W = 0.15, HOLD_GAIN = 0.04;   // rec handlers avoid risky throws (risk weight), and unusual ones (prior)
   const USER_HOLD = 1.0;   // seconds an offensive player you moved keeps your spot (a defender stays parked until the next throw)
   // Energy: sprinting above cruise speed drains a burst bucket; jogging or standing refills it.
@@ -23,6 +27,7 @@
   // Bodies: players can't pass through each other. AI runners steer around anyone in their path (not their own
   // matchup); contact pushes both apart and costs the momentum they had into each other.
   // A defender screened off while guarding their player (within PICK_NEAR m) calls a pick.
+  const GAME_TO = 7;      // first to 7 points wins
   const SETUP_MAX = 12;   // longest line-up between points before the disc goes in anyway
   const BODY = 0.9, AVOID = 2.2, PICK_NEAR = 3.5, PICK_COOL = 3;
 
@@ -147,7 +152,14 @@
       const win = s.dice === 'random' ? s.rand() < p : p >= 0.5;
       const dived = B0.dd > B0.r + 0.3;
       if (dived) layOut(s, d, B0.Q);
-      if (win) return turnover(s, `${LABELS[PIDS[d]]} ${dived ? 'lays out and blocks it' : mark ? 'gets a hand block' : 'gets a hand on it'}`, B0.Q);
+      if (win) {
+        // knocked down, or caught: the deeper inside their reach, the likelier they catch it (a mark or a dive mostly knocks it down)
+        const pC = mark ? 0.08 : dived ? 0.12 : Math.max(0.12, Math.min(0.55, 0.12 - 0.8 * B0.gap));
+        const caught = s.dice === 'random' ? s.rand() < pC : pC >= 0.5;
+        const nm = LABELS[PIDS[d]];
+        if (caught) return interception(s, d, `${nm} ${dived ? 'lays out and intercepts it' : 'intercepts it'}`, B0.Q);
+        return turnover(s, `${nm} ${dived ? 'lays out and blocks it' : mark ? 'gets a hand block' : 'gets a hand on it'}`, B0.Q);
+      }
       if (B0.gap < 0.3) s.log.push({ t: s.t, text: dived ? `${LABELS[PIDS[d]]} lays out for the block and just misses.` : `${LABELS[PIDS[d]]} gets a finger on it, but it gets through.` });
     }
   }
@@ -180,7 +192,7 @@
   const value = (s, pos, vel, holder, stall) => ENG.ready() ? ENG.value(pos || s.pos, vel || s.vel, holder == null ? s.holder : holder, Math.min(7.5, stall == null ? s.stall : stall)) : 0.5;
 
   function evalNow(s) {
-    if (s.done) return s.done.reason === 'goal' ? 1 : 0;
+    if (s.done) return s.done.reason === 'goal' ? 1 : 0;   // a Callahan is 0 for the offense
     if (s.holder >= 0) return value(s);
     const f = s.flight, r = f.recv;
     const pos = s.pos.map((p, i) => i === r ? f.B.slice() : p), vel = s.vel.map((v, i) => i === r ? [0, 0] : v);
@@ -429,7 +441,7 @@
           const line = close[Math.floor(s.rand() * close.length)];
           // throw now unless waiting half a second gives a clearly better throw (a cut still developing);
           // the wait has to pay HOLD_GAIN, because the defense can recover in the meantime
-          const worth = line.reg >= 0.2 && line.reg >= res.holdQ - HOLD_GAIN;
+          const worth = line.reg >= 0.2 && line.reg >= res.holdQ - HOLD_GAIN && line.p >= patience(s.stall);
           if (worth || (s.stall >= 6.5 && line.p > 0.3)) release(s, line);
           else if (s.stall >= 6.5) release(s, ranked.slice().sort((a, b) => b.p - a.p)[0]);
         }
@@ -647,7 +659,10 @@
       }
       if (best && best.pD > 0.05) {
         const win = s.dice === 'random' ? s.rand() < best.pD : best.pD >= 0.5;
-        if (win) return turnover(s, `${name(best.d)} ${best.front ? 'steps in front and takes it' : 'gets a hand on it at the catch'}`, B);
+        if (win) {   // in front at the catch: often a clean interception, otherwise a deflection
+          const held = best.front && (s.dice === 'random' ? s.rand() < 0.55 : false);
+          return held ? interception(s, best.d, `${name(best.d)} steps in front and takes it`, B) : turnover(s, `${name(best.d)} ${best.front ? 'steps in front and knocks it down' : 'gets a hand on it at the catch'}`, B);
+        }
         if (best.pD > 0.25) s.log.push({ t: s.t, text: `${name(r)} wins the contest with ${name(best.d)}.` });
       }
     }
@@ -671,13 +686,33 @@
       for (let i = 4; i < 8; i++) if (['chase', 'intercept'].includes(s.macro[i].kind)) { s.macro[i] = { kind: 'under', label: STYLE_LABEL.under, since: s.t }; s.dstyle[i] = 'under'; }
       s.nextDecision = s.t + SUB;   // everyone re-reads the field right after the catch
       s.macro[r] = { kind: 'hold', label: 'holds the disc', target: null, since: s.t };
-      if (B[0] >= GOAL_X) { s.done = { reason: 'goal', text: 'Goal!', at: B.slice() }; s.score[s.flipped ? 1 : 0]++; s.log.push({ t: s.t, text: `${name(r)} ${laid ? 'lays out for it in the endzone' : 'catches it in the endzone'}. Goal!` }); }
+      if (B[0] >= GOAL_X) { s.log.push({ t: s.t, text: `${name(r)} ${laid ? 'lays out for it in the endzone' : 'catches it in the endzone'}. Goal!` }); scorePoint(s, s.flipped ? 1 : 0, 'goal', `${name(f.from)} to ${name(r)}`, B); }
       else s.log.push({ t: s.t, text: laid ? `${name(r)} lays out and makes the catch!` : `${name(r)} catches it.` });
       if (f.pick && !s.done) { s.log.push({ t: s.t, text: `Play stops for the pick: ${name(f.pick.d)} goes back to ${name(f.pick.d - 4)}.` }); restartAfterPick(s, f.pick.d); }
     } else {
       const why = f.miss ? `the throw sails wide of ${name(r)}` : laid ? `${name(r)} lays out but can't hold on` : !there ? `${name(r)} wasn't there to catch it` : 'the defense gets a hand on it';
       turnover(s, why, B);
     }
+  }
+  // A point: the score, the point log (for the scoreboard), and the end of the game at GAME_TO.
+  function scorePoint(s, team, how, text, P) {
+    s.score = s.score || [0, 0]; s.points = s.points || [];
+    s.score[team]++;
+    s.points.push({ t: s.t, team, how, text, score: s.score.slice() });
+    const over = s.score[team] >= GAME_TO;
+    s.done = { reason: how, text, at: P && P.slice(), team, gameOver: over };
+    if (over) s.log.push({ t: s.t, text: `${team ? 'Blue' : 'Orange'} wins ${s.score[team]}-${s.score[1 - team]}!` });
+  }
+  // A defender who catches the disc in the endzone the offense attacks scores right there: a Callahan.
+  function interception(s, d, why, P) {
+    if (P[0] >= GOAL_X && P[1] >= 0 && P[1] <= W) {
+      const team = s.flipped ? 0 : 1, text = `Callahan! ${LABELS[PIDS[d]]} intercepts it in the endzone`;
+      s.log.push({ t: s.t, text: text + `: point for ${team ? 'Blue' : 'Orange'}.` });
+      if (s.flight) s.flight.dead = P.slice();
+      s.flight = null;
+      return scorePoint(s, team, 'callahan', text + '.', P);
+    }
+    return turnover(s, why, P);
   }
   function turnover(s, why, P) {
     s.done = { reason: 'turnover', text: 'Turnover: ' + why + '.', at: P && P.slice() };
@@ -692,21 +727,27 @@
   // fresh restart from its own endzone.
   const mirror = p => [L - p[0], W - p[1]];
   function nextPossession(s) {
-    if (!s.done) return false;
+    if (!s.done || s.done.gameOver) return false;
     const was = s.done, swap = a => a.map((_, j) => a[(j + 4) % 8]);
-    s.flipped = !s.flipped; s.poss = (s.poss || 1) + 1; s.score = s.score || [0, 0];
-    s.pos = swap(s.pos).map(mirror); s.vel = swap(s.vel).map(v => [-v[0], -v[1]]); s.tgt = swap(s.tgt).map(mirror);
-    s.energy = swap(s.energy); s.down = swap(s.down);
-    s.lay = swap(s.lay).map(l => l && Object.assign({}, l, { dir: [-l.dir[0], -l.dir[1]] }));
+    // after a Callahan the team that threw it gets the disc back (they were scored on): no swap
+    const keep = was.reason === 'callahan';
+    s.poss = (s.poss || 1) + 1; s.score = s.score || [0, 0];
+    if (!keep) {
+      s.flipped = !s.flipped;
+      s.pos = swap(s.pos).map(mirror); s.vel = swap(s.vel).map(v => [-v[0], -v[1]]); s.tgt = swap(s.tgt).map(mirror);
+      s.energy = swap(s.energy); s.down = swap(s.down);
+      s.lay = swap(s.lay).map(l => l && Object.assign({}, l, { dir: [-l.dir[0], -l.dir[1]] }));
+    }
     s.done = null; s.flight = null; s.lastSearch = null; s.stall = 0;
     s.macro = PIDS.map((_, i) => i < 4 ? { kind: 'set', label: 'sets up', target: null, since: s.t } : { kind: 'under', label: STYLE_LABEL.under, since: s.t });
     s.dstyle = PIDS.map(() => 'under');
     const team = s.flipped ? 'Blue' : 'Orange';
-    if (was.reason === 'goal') {
+    if (was.reason === 'goal' || keep) {
       // Between points: everyone walks to a line-up for the restart (drag anyone to change it). The point
       // starts when the disc is checked in: everyone set, or SETUP_MAX seconds.
       // The disc stays on the ground where the goal was caught; the new offense starts from there.
-      let P = was.at ? mirror(was.at) : [1.5, W / 2];
+      // (a Callahan was caught in the endzone they attack: they bring it in from their own goal line instead)
+      let P = keep ? [FIELD.ez, was.at ? was.at[1] : W / 2] : was.at ? mirror(was.at) : [1.5, W / 2];
       P = [Math.max(0.5, Math.min(GOAL_X - 0.5, P[0])), Math.max(0.5, Math.min(W - 0.5, P[1]))];
       const sc = randomSetup(Math.floor(s.t * 100) + s.seed, P);
       // the nearest attacker is the handler; the others take the remaining formation spots, nearest first
@@ -724,7 +765,8 @@
       s.flight = { pickup: true, setup: true, from: -1, recv: r, B: P.slice(), A: P.slice(), t0: s.t, dur: 0, p: 1, ok: true, name: 'pickup', th: null, tried: [], mark: -1 };
       s.macro[r] = { kind: 'set', label: 'waits by the disc', target: null, since: s.t };
       for (let i = 0; i < 8; i++) if (i !== r) s.macro[i] = { kind: 'set', label: 'walks to their spot', target: null, since: s.t };
-      s.log.push({ t: s.t, text: `${team}'s disc where the goal was caught (${s.score[0]}-${s.score[1]}). Everyone lines up.` });
+      s.setup.after = keep ? 'callahan' : 'goal';
+      s.log.push({ t: s.t, text: `${team}'s disc ${keep ? 'on their goal line after the Callahan' : 'where the goal was caught'} (${s.score[0]}-${s.score[1]}). Everyone lines up.` });
     } else {
       let P = was.at ? mirror(was.at) : [L / 2, W / 2];
       P = [Math.max(FIELD.ez, Math.min(GOAL_X - 0.5, P[0])), Math.max(0.4, Math.min(W - 0.4, P[1]))];   // out of bounds: back in at the line
@@ -817,6 +859,7 @@
     return { title: 'Random spot', holder: 'O1', pos, stall: 0 };
   }
 
-  const api = { setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
+  const setPatience = o => { Object.assign(PATIENCE, o); }, setLook = v => { LOOK = v; };
+  const api = { setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
   if (isNode) module.exports = api; else root.UltiGame = api;
 })(typeof window !== 'undefined' ? window : globalThis);
