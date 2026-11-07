@@ -166,7 +166,7 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
       <button class="btn" id="tele" aria-pressed="false" title="Drag any player without time passing (or hold Shift)">Teleport</button>
       <div class="scrub"><label for="hist">Time</label><input type="range" id="hist" min="0" max="0" value="0"><span id="histt"></span></div>
     </div>
-    <p class="hint">Drag <b>any player</b>: time moves with them and everyone else reacts. Stop moving and time stops. A fast drag sprints and uses up the player's burst (the ring that appears around them); a slow drag (or <kbd>Alt</kbd>) jogs and refills it. Players lay out for discs just out of reach, about half come up with it, and they need a moment to get up. Click a player to see their options. <kbd>Shift</kbd>+drag (or Teleport) moves a player without time passing. <kbd>←</kbd> <kbd>→</kbd> step time by 0.25 s (<kbd>Shift</kbd> for 1 s), <kbd>Space</kbd> waits 0.5 s. <kbd>Shift</kbd>+click an attacker to give them the disc. Click any arrow to play it (it plays out at 2×): a purple line throws, a yellow arrow runs that option, a white arrow plays on until that player finishes their move. Play is continuous: after a turnover the other team picks up the disc and attacks the other way (Orange attacks right, Blue left), after a goal everyone walks to a line-up for the next point (the field greys out: not live). Drag anyone to change the line-up and press Disc in, or it starts when everyone is set. <kbd>N</kbd> plays on when you are stepping by hand. Players have bodies: they can't run through each other and steer around traffic. Very short, fast passes are hard to read and get dropped more often (a 3 m flick about 30%), so the AI prefers a push or a floaty touch pass up close, which is slower and easier to get a hand on. A defender screened off their player calls a pick: play stops and they walk back (a disc caught by their player during the pick goes back to the thrower).</p>
+    <p class="hint">Drag <b>any player</b>: time moves with them and everyone else reacts. Stop moving and time stops. A fast drag sprints and uses up the player's burst (the ring that appears around them); a slow drag (or <kbd>Alt</kbd>) jogs and refills it. Players lay out for discs just out of reach, about half come up with it, and they need a moment to get up. Click a player to see their options. <kbd>Shift</kbd>+drag (or Teleport) moves a player without time passing. <kbd>←</kbd> <kbd>→</kbd> step time by 0.25 s (<kbd>Shift</kbd> for 1 s), <kbd>Space</kbd> waits 0.5 s. <kbd>Shift</kbd>+click an attacker to give them the disc. Click any arrow to play it (it plays out at 2×): a purple line throws, a yellow arrow runs that option, a white arrow plays on until that player finishes their move. Play is continuous: after a turnover the other team picks up the disc and attacks the other way (Orange attacks right, Blue left), after a goal the disc stays where it was caught and the other team brings it in from there: everyone walks to a line-up (the field greys out: not live), then the handler picks up the disc and presents it. Drag anyone to change the line-up and press Disc in. <kbd>N</kbd> plays on when you are stepping by hand. Players have bodies: they can't run through each other and steer around traffic. Very short, fast passes are hard to read and get dropped more often (a 3 m flick about 30%), so the AI prefers a push or a floaty touch pass up close, which is slower and easier to get a hand on. A defender screened off their player calls a pick: play stops and they walk back (a disc caught by their player during the pick goes back to the thrower).</p>
   </main>
 
   <aside class="panel" id="panel">
@@ -285,7 +285,7 @@ function playOn(){
   face.push(...face.splice(0, 4));                       // indices swap teams; keep each person's facing
   if (focus >= 0) focus = (focus + 4) % 8;               // keep the same person selected
   pushHist(); render();
-  if (!autoOn && S.setup) animate(12, -1, null, true);   // walk to the line-up (click anywhere to stop and rearrange)
+  if (!autoOn && S.setup) animate(20, -1, null, true);   // walk to the line-up (click anywhere to stop and rearrange)
 }
 function autoLoop(ts){
   if (!autoOn) return;
@@ -395,7 +395,7 @@ function panel(){
   $('#evalfill').style.background = s.flipped ? 'var(--def)' : ''; $('#evalbar').style.background = s.flipped ? 'var(--off)' : '';
   $('#evalnum').style.color = s.flipped ? 'var(--def-ink)' : ''; $('#evalnum').textContent = Math.round(v * 100);
   $('#evbig').textContent = ready ? pct(v) : '–';
-  $('#evtxt').textContent = !ready ? 'Loading the engine…' : s.done ? s.done.text : s.holder >= 0 ? `chance ${s.flipped ? 'Blue' : 'Orange'} scores this possession` : 'expected, with the disc in the air';
+  $('#evtxt').textContent = !ready ? 'Loading the engine…' : s.done ? s.done.text : s.setup ? `chance ${s.flipped ? 'Blue' : 'Orange'} scores, once the disc is in` : s.holder >= 0 ? `chance ${s.flipped ? 'Blue' : 'Orange'} scores this possession` : 'expected, with the disc in the air';
   // sparkline
   const pts = evals.filter(e => e[0] <= s.t + 1e-6), tmax = Math.max(4, s.t);
   $('#spark').innerHTML = `<line class="base" x1="0" y1="23" x2="300" y2="23"/>` + (pts.length > 1 ? `<path d="${pts.map((e, i) => (i ? 'L' : 'M') + r2(e[0] / tmax * 300) + ' ' + r2(46 - e[1] * 46)).join('')}"/>` : '');
@@ -438,7 +438,9 @@ function panel(){
     b.hidden = false; b.innerHTML = `<b class="${cls}">${txt}</b><span class="hint">${esc(goal ? `Orange ${s.score[0]} : ${s.score[1]} Blue` : s.done.text.replace(/^Turnover: /, ''))}</span>` +
       (autoOn ? '' : `<span><button class="btn" data-act="back2">Back 2 s</button> <button class="btn primary" data-act="next">${goal ? 'Next point' : 'Play on'}</button></span>`);
   } else if (s.setup) {
-    b.hidden = false; b.innerHTML = `<b class="setup">Lining up</b><span class="hint">${team} receives · ${s.setup.hold ? 'arrange, then Disc in' : 'drag anyone to rearrange'}</span><span><button class="btn primary" data-act="discin">Disc in</button></span>`;
+    const st = s.setup, hn = st.handler != null ? LABELS[PIDS[st.handler]] : 'The handler';
+    const msg = s.holder >= 0 ? `${hn} presents the disc` : st.go ? `${hn} goes to the disc` : `${team}'s disc where the goal was caught · ${st.hold ? 'arrange, then Disc in' : 'drag anyone to rearrange'}`;
+    b.hidden = false; b.innerHTML = `<b class="setup">Lining up</b><span class="hint">${msg}</span>` + (!autoOn && (!st.go || (s.holder >= 0 && st.hold)) ? `<span><button class="btn primary" data-act="discin">Disc in</button></span>` : '');
   } else b.hidden = true;
   $('#board').classList.toggle('dead', !!(s.done || s.setup));
   const hs = $('#hist'); hs.max = Math.max(0, hist.length - 1); hs.value = hi; $('#histt').textContent = `${S.t.toFixed(1)} s`;
@@ -544,7 +546,7 @@ document.addEventListener('click', e => {
   const a = e.target.closest('[data-act]'); if (!a) return;
   if (a.dataset.act === 'again') newGame();
   if (a.dataset.act === 'next') playOn();
-  if (a.dataset.act === 'discin' && S && S.setup) { G.discIn(S); pushHist(); render(); }
+  if (a.dataset.act === 'discin' && S && S.setup) { G.discIn(S); pushHist(); render(); if (S.setup) animate(20, -1, null, true); }
   if (a.dataset.act === 'back2') { hi = Math.max(0, hi - 8); S = G.restore(hist[hi]); render(); }
 });
 document.addEventListener('mouseover', e => {

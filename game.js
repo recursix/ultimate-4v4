@@ -442,7 +442,16 @@
   // Targets + physics for one substep
   // ---------------------------------------------------------------------------------------------
   function targets(s, ctrl) {
-    if (s.setup) { for (let i = 0; i < 8; i++) if (i !== ctrl) s.tgt[i] = s.setup.spots[i].slice(); return; }
+    if (s.setup) {
+      const st = s.setup, h = st.handler;
+      for (let i = 0; i < 8; i++) if (i !== ctrl) s.tgt[i] = st.spots[i].slice();
+      // the handler waits a couple of metres from the disc, and goes to it once everyone is set
+      if (h != null && h !== ctrl && s.flight && s.flight.pickup) {
+        const P = st.disc, away = unit(sub(s.pos[h], P));
+        s.tgt[h] = st.go ? P.slice() : clampF(add(P, mul(len(away) ? away : [1, 0], 2)), 0.4);
+      }
+      return;
+    }
     const { Hd } = roles(s);
     for (let i = 0; i < 8; i++) {
       if (i === ctrl) continue;
@@ -568,10 +577,22 @@
   }
 
   function resolve(s) {
-    if (s.setup) {   // between points: the disc goes in once everyone is on their spot (or after SETUP_MAX)
-      if (s.setup.hold) return;   // you are arranging the line-up: the disc goes in when you say so
-      const ready = s.pos.every((p, i) => dist(p, s.setup.spots[i]) < 0.6 && len(s.vel[i]) < 1.2);
-      if (ready || s.t - s.setup.t0 > SETUP_MAX) discIn(s);
+    if (s.setup) {   // between points: line up, then the handler picks up the disc and presents it
+      const st = s.setup, h = st.handler, name = i => LABELS[PIDS[i]];
+      if (s.flight && s.flight.pickup) {
+        if (!st.go && !st.hold) {
+          const ready = s.pos.every((p, i) => i === h || (dist(p, st.spots[i]) < 0.6 && len(s.vel[i]) < 1.2));
+          if (ready || s.t - st.t0 > SETUP_MAX) setupGo(s);
+        }
+        if ((st.go || st.hold) && dist(s.pos[h], st.disc) < 0.45) {
+          s.holder = h; s.pos[h] = st.disc.slice(); s.vel[h] = [0, 0]; s.flight = null;
+          s.macro[h] = { kind: 'hold', label: 'presents the disc', target: null, since: s.t };
+          st.checkAt = s.t + 0.8;
+          s.log.push({ t: s.t, text: `${name(h)} picks up the disc and presents it.` });
+        }
+        return;
+      }
+      if (!st.hold && st.checkAt != null && s.t >= st.checkAt) discIn(s);
       return;
     }
     if (s.holder >= 0) {
@@ -638,7 +659,7 @@
       for (let i = 4; i < 8; i++) if (['chase', 'intercept'].includes(s.macro[i].kind)) { s.macro[i] = { kind: 'under', label: STYLE_LABEL.under, since: s.t }; s.dstyle[i] = 'under'; }
       s.nextDecision = s.t + SUB;   // everyone re-reads the field right after the catch
       s.macro[r] = { kind: 'hold', label: 'holds the disc', target: null, since: s.t };
-      if (B[0] >= GOAL_X) { s.done = { reason: 'goal', text: 'Goal!' }; s.score[s.flipped ? 1 : 0]++; s.log.push({ t: s.t, text: `${name(r)} ${laid ? 'lays out for it in the endzone' : 'catches it in the endzone'}. Goal!` }); }
+      if (B[0] >= GOAL_X) { s.done = { reason: 'goal', text: 'Goal!', at: B.slice() }; s.score[s.flipped ? 1 : 0]++; s.log.push({ t: s.t, text: `${name(r)} ${laid ? 'lays out for it in the endzone' : 'catches it in the endzone'}. Goal!` }); }
       else s.log.push({ t: s.t, text: laid ? `${name(r)} lays out and makes the catch!` : `${name(r)} catches it.` });
       if (f.pick && !s.done) { s.log.push({ t: s.t, text: `Play stops for the pick: ${name(f.pick.d)} goes back to ${name(f.pick.d - 4)}.` }); restartAfterPick(s, f.pick.d); }
     } else {
@@ -672,11 +693,26 @@
     if (was.reason === 'goal') {
       // Between points: everyone walks to a line-up for the restart (drag anyone to change it). The point
       // starts when the disc is checked in: everyone set, or SETUP_MAX seconds.
-      const sc = varied(SCENARIOS.restart, Math.floor(s.t * 100) + s.seed);
-      s.setup = { spots: PIDS.map(p => sc.pos[p].slice()), t0: s.t };
-      s.holder = 0; s.macro[0] = { kind: 'hold', label: 'brings the disc to the line', target: null, since: s.t };
-      for (let i = 1; i < 8; i++) s.macro[i] = { kind: 'set', label: 'walks to their spot', target: null, since: s.t };
-      s.log.push({ t: s.t, text: `${team} receives (${s.score[0]}-${s.score[1]}). Everyone lines up for the next point.` });
+      // The disc stays on the ground where the goal was caught; the new offense starts from there.
+      let P = was.at ? mirror(was.at) : [1.5, W / 2];
+      P = [Math.max(0.5, Math.min(GOAL_X - 0.5, P[0])), Math.max(0.5, Math.min(W - 0.5, P[1]))];
+      const sc = randomSetup(Math.floor(s.t * 100) + s.seed, P);
+      // the nearest attacker is the handler; the others take the remaining formation spots, nearest first
+      let r = 0; for (let i = 1; i < 4; i++) if (dist(s.pos[i], P) < dist(s.pos[r], P)) r = i;
+      const roleOf = []; roleOf[r] = 0;
+      const free = [1, 2, 3], left = [0, 1, 2, 3].filter(i => i !== r);
+      while (left.length) {
+        let best = null;
+        for (const i of left) for (const k of free) { const d = dist(s.pos[i], sc.pos[PIDS[k]]); if (!best || d < best.d) best = { i, k, d }; }
+        roleOf[best.i] = best.k; left.splice(left.indexOf(best.i), 1); free.splice(free.indexOf(best.k), 1);
+      }
+      const spots = PIDS.map((_, i) => i < 4 ? sc.pos[PIDS[roleOf[i]]].slice() : sc.pos[PIDS[roleOf[i - 4] + 4]].slice());
+      s.setup = { spots, t0: s.t, handler: r, disc: P.slice(), go: false };
+      s.holder = -1;
+      s.flight = { pickup: true, setup: true, from: -1, recv: r, B: P.slice(), A: P.slice(), t0: s.t, dur: 0, p: 1, ok: true, name: 'pickup', th: null, tried: [], mark: -1 };
+      s.macro[r] = { kind: 'set', label: 'waits by the disc', target: null, since: s.t };
+      for (let i = 0; i < 8; i++) if (i !== r) s.macro[i] = { kind: 'set', label: 'walks to their spot', target: null, since: s.t };
+      s.log.push({ t: s.t, text: `${team}'s disc where the goal was caught (${s.score[0]}-${s.score[1]}). Everyone lines up.` });
     } else {
       let P = was.at ? mirror(was.at) : [L / 2, W / 2];
       P = [Math.max(FIELD.ez, Math.min(GOAL_X - 0.5, P[0])), Math.max(0.4, Math.min(W - 0.4, P[1]))];   // out of bounds: back in at the line
@@ -692,12 +728,19 @@
     return true;
   }
 
+  // everyone's set (or you said so): the handler walks to the disc
+  function setupGo(s) {
+    const st = s.setup; if (!st || st.go) return;
+    st.go = true;
+    if (s.flight && s.flight.pickup) { s.macro[st.handler] = { kind: 'set', label: 'goes to the disc', target: null, since: s.t }; s.log.push({ t: s.t, text: `Everyone's set: ${LABELS[PIDS[st.handler]]} goes to the disc.` }); }
+  }
   function discIn(s) {
     if (!s.setup) return;
+    if (s.holder < 0) { setupGo(s); s.setup.hold = false; return; }   // not picked up yet: go get it first
     s.setup = null; s.stall = 0; s.vel = s.vel.map(() => [0, 0]); s.nextDecision = s.t;
     s.energy = s.energy.map(e => Math.min(1, e + 0.3));
     s.macro = PIDS.map((_, i) => i === s.holder ? { kind: 'hold', label: 'holds the disc', target: null, since: s.t } : i < 4 ? { kind: 'set', label: '', target: null, since: s.t - 1 } : { kind: 'under', label: STYLE_LABEL.under, since: s.t });
-    s.log.push({ t: s.t, text: 'Disc in: play!' });
+    s.log.push({ t: s.t, text: 'Disc in: play on!' });
   }
 
   // Advance the game by dt seconds. ctrl: index of the user's player (or -1). ctrlPath(u) -> position at fraction u.
@@ -744,9 +787,9 @@
   }
   // A fresh formation anywhere on the field: disc somewhere in play, a dump behind, two cutters in a
   // stack downfield (sometimes split), defenders on the open side of their player and a mark on the force.
-  function randomSetup(seed) {
+  function randomSetup(seed, H0) {
     const rand = rng(seed * 7919 + 3), U = (a, b) => a + rand() * (b - a);
-    const H = [U(3, 20), U(2, 16)];
+    const H = H0 ? H0.slice() : [U(3, 20), U(2, 16)];
     const mid = H[1] < 9 ? 1 : -1;                       // the dump sits toward the middle
     const O2 = clampF([H[0] - U(2, 4), H[1] + mid * U(3, 5)], 1);
     const split = rand() < 0.35, sy = U(6, 12);
@@ -761,6 +804,6 @@
     return { title: 'Random spot', holder: 'O1', pos, stall: 0 };
   }
 
-  const api = { discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
+  const api = { setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
   if (isNode) module.exports = api; else root.UltiGame = api;
 })(typeof window !== 'undefined' ? window : globalThis);
