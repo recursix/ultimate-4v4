@@ -25,6 +25,7 @@
     readT: 0.30,      // a receiver needs about this long after the release to read a disc's flight
     readW: 0.06,      // how sharply catching gets harder below readT (logistic width, s)
     dropMax: 0.40,    // drop chance for a point-blank zinger
+    inReach: 0.8,     // a disc inside a defender's reach: each metre inside counts as 0.8 s of time margin
     drag: 0.0156,     // flat-disc drag factor per metre (deceleration ~ drag * v^2)
   };
 
@@ -38,9 +39,9 @@
     io:      { v0: 15, v: 13,  h0: 1.1, h1: 1.2, apex: () => 1.5,                bend: -1, bulge: L => Math.min(3, 0.18 * L), off: 0.9, min: 6,  max: 26, rel: L => 0.80 - Math.max(0, L - 15) * 0.008, over: false },
     oi:      { v0: 15, v: 13,  h0: 1.1, h1: 1.2, apex: () => 1.5,                bend: 1,  bulge: L => Math.min(3.5, 0.2 * L), off: 1.0, min: 6,  max: 26, rel: L => 0.80 - Math.max(0, L - 15) * 0.008, over: false },
     high:    { v0: 15, v: 13,  h0: 2.2, h1: 1.8, apex: () => 2.6,                bend: 0,  bulge: () => 0,                    off: 0.5, min: 4,  max: 20, rel: () => 0.9, over: false },
-    hammer:  { v: 8, h0: 2.3, h1: 1.5, apex: L => Math.min(7, 2.5 + 0.25 * L), bend: 0, bulge: () => 0,             off: 0.3, min: 7,  max: 26, rel: L => 0.74 - Math.max(0, L - 15) * 0.01, over: true },
-    scoober: { v: 9,   h0: 1.9, h1: 1.6, apex: () => 2.9,                bend: 0,  bulge: () => 0,                    off: 0.3, min: 2,  max: 12, rel: () => 0.78, over: true },
-    blade:   { v: 9,   h0: 2.4, h1: 1.0, apex: L => Math.min(6, 3 + 0.2 * L), bend: 0, bulge: () => 0,                off: 0.3, min: 8,  max: 24, rel: () => 0.62, over: true },
+    hammer:  { v: 8, h0: 2.3, h1: 1.5, apex: L => Math.min(7, 2.5 + 0.25 * L), bend: 0, bulge: () => 0,             off: 0.3, min: 7,  max: 26, rel: L => 0.74 - Math.max(0, L - 15) * 0.01, over: true, catch: 0.86 },
+    scoober: { v: 9,   h0: 1.9, h1: 1.6, apex: () => 2.9,                bend: 0,  bulge: () => 0,                    off: 0.3, min: 2,  max: 12, rel: () => 0.78, over: true, catch: 0.92 },
+    blade:   { v: 9,   h0: 2.4, h1: 1.0, apex: L => Math.min(6, 3 + 0.2 * L), bend: 0, bulge: () => 0,                off: 0.3, min: 8,  max: 24, rel: () => 0.62, over: true, catch: 0.84 },
     huck:    { v0: 19, v: 17,  h0: 1.3, h1: 1.7, apex: L => 2 + 0.12 * L,        bend: 0,  bulge: () => 0,                    off: 0.9, min: 16, max: 70, rel: L => 0.80 - Math.max(0, L - 18) * 0.01, over: false },
   };
   const TYPE_ORDER = ['flat', 'push', 'float', 'io', 'oi', 'high', 'hammer', 'scoober', 'blade', 'huck'];
@@ -149,7 +150,7 @@
         // cheap lower bound first: no one covers ground faster than top speed. Margins above 0.8 s don't
         // change the result (the logistic is saturated), so far-away defenders skip the exact solve.
         const best = zone === 'block' ? early : late, vmx = d.vmax || P.vmax;
-        const lb = (d.delay || 0) + (d.mark ? P.reactMark : P.reactD) * 0 + Math.max(0, dist(d.pos, p) - r - (d.vel ? Math.hypot(d.vel[0], d.vel[1]) * 0.3 : 0)) / vmx - t;
+        const lb = (d.delay || 0) - P.inReach * r + Math.max(0, dist(d.pos, p) - r - (d.vel ? Math.hypot(d.vel[0], d.vel[1]) * 0.3 : 0)) / vmx - t;
         if (lb > Math.min(best, 0.8)) continue;
         let m;
         if (d.vel) {
@@ -158,8 +159,13 @@
           const re = d.mark ? P.reactMark : P.reactD, S0 = [d.pos[0] + d.vel[0] * re, d.pos[1] + d.vel[1] * re];
           const gap = dist(S0, p), need = Math.max(0, gap - r), dir = gap > 1e-6 ? [(p[0] - S0[0]) / gap, (p[1] - S0[1]) / gap] : [0, 0];
           const vp = d.vel[0] * dir[0] + d.vel[1] * dir[1];
-          m = (d.delay || 0) + re + (vp < 0 ? -vp / 8 : 0) + tRunFrom(need, Math.max(0, vp), d.vmax, P.tauSprint) - t;
-        } else m = (d.delay || 0) + (d.mark ? P.reactMark : P.reactD) + tRunFrom(Math.max(0, dist(d.pos, p) - r), 0, d.vmax) - t;
+          // a disc already inside their reach: the deeper inside, the surer the block
+          const inside = Math.min(0, gap - r);
+          m = (d.delay || 0) + re + (vp < 0 ? -vp / 8 : 0) + (need > 0 ? tRunFrom(need, Math.max(0, vp), d.vmax, P.tauSprint) : P.inReach * inside) - t;
+        } else {
+          const g0 = dist(d.pos, p) - r;
+          m = (d.delay || 0) + (d.mark ? P.reactMark : P.reactD) + (g0 > 0 ? tRunFrom(g0, 0, d.vmax) : P.inReach * g0) - t;
+        }
         if (zone === 'block') { if (m < early) { early = m; blocker = d.id; bS = s; } }
         else if (m < late) { late = m; contester = d.id; cS = s; }
       }
@@ -170,7 +176,8 @@
     const pc = sig((late + 0.05) / 0.15);
     const rel = clamp(T.rel(L), 0.05, 0.99);
     // A fast disc from close range arrives before the receiver can read it: drops go up below P.readT of flight.
-    const pk = 1 - P.dropMax * sig((P.readT - tr.flight) / P.readW);
+    // upside-down and edge-on discs (hammer, scoober, blade) are harder to catch: T.catch
+    const pk = (1 - P.dropMax * sig((P.readT - tr.flight) / P.readW)) * (T.catch || 1);
     const p = inBounds ? rel * pe * pc * pk : 0;
     return {
       type, side, name: throwName(type, side), over: T.over, len: L, flight: tr.flight,

@@ -106,6 +106,7 @@ kbd{font-family:var(--f-mono);font-size:11.5px;border:1px solid var(--line);bord
 .optlbl{fill:var(--you);font-family:var(--f-display);font-weight:700;font-size:.55px;paint-order:stroke;stroke:var(--ez);stroke-width:.14px}
 .ah-E{fill:var(--eng)} .ah-Y{fill:var(--you)} .ah-C{fill:var(--chalk)}
 .disc .d1{fill:var(--disc);stroke:var(--disc-edge);stroke-width:.07} .disc .d2{fill:none;stroke:var(--disc-edge);stroke-width:.04;opacity:.5}
+.disc.flip .d1{fill:#d9d9d4} .disc.flip .d2{fill:#bdbdb6;opacity:.9}
 .shadow{fill:#000;opacity:.25}
 .hit{fill:none;stroke:transparent;stroke-width:1.1;pointer-events:stroke;cursor:pointer}
 .hitdot{fill:transparent;cursor:pointer}
@@ -166,7 +167,7 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
       <button class="btn" id="tele" aria-pressed="false" title="Drag any player without time passing (or hold Shift)">Teleport</button>
       <div class="scrub"><label for="hist">Time</label><input type="range" id="hist" min="0" max="0" value="0"><span id="histt"></span></div>
     </div>
-    <p class="hint">Drag <b>any player</b>: time moves with them and everyone else reacts. Stop moving and time stops. A fast drag sprints and uses up the player's burst (the ring that appears around them); a slow drag (or <kbd>Alt</kbd>) jogs and refills it. Players lay out for discs just out of reach, about half come up with it, and they need a moment to get up. Click a player to see their options. <kbd>Shift</kbd>+drag (or Teleport) moves a player without time passing. <kbd>←</kbd> <kbd>→</kbd> step time by 0.25 s (<kbd>Shift</kbd> for 1 s), <kbd>Space</kbd> waits 0.5 s. <kbd>Shift</kbd>+click an attacker to give them the disc. Click any arrow to play it (it plays out at 2×): a purple line throws, a yellow arrow runs that option, a white arrow plays on until that player finishes their move. Play is continuous: after a turnover the other team picks up the disc and attacks the other way (Orange attacks right, Blue left), after a goal the disc stays where it was caught and the other team brings it in from there: everyone walks to a line-up (the field greys out: not live), then the handler picks up the disc and presents it. Drag anyone to change the line-up and press Disc in. <kbd>N</kbd> plays on when you are stepping by hand. Players have bodies: they can't run through each other and steer around traffic. Very short, fast passes are hard to read and get dropped more often (a 3 m flick about 30%), so the AI prefers a push or a floaty touch pass up close, which is slower and easier to get a hand on. A defender screened off their player calls a pick: play stops and they walk back (a disc caught by their player during the pick goes back to the thrower).</p>
+    <p class="hint">Drag <b>any player</b>: time moves with them and everyone else reacts. Stop moving and time stops. A fast drag sprints and uses up the player's burst (the ring that appears around them); a slow drag (or <kbd>Alt</kbd>) jogs and refills it. Players lay out for discs just out of reach, about half come up with it, and they need a moment to get up. Click a player to see their options. <kbd>Shift</kbd>+drag (or Teleport) moves a player without time passing. <kbd>←</kbd> <kbd>→</kbd> step time by 0.25 s (<kbd>Shift</kbd> for 1 s), <kbd>Space</kbd> waits 0.5 s. <kbd>Shift</kbd>+click an attacker to give them the disc. Click any arrow to play it (it plays out at 2×): a purple line throws, a yellow arrow runs that option, a white arrow plays on until that player finishes their move. Play is continuous: after a turnover the other team picks up the disc and attacks the other way (Orange attacks right, Blue left), after a goal the disc stays where it was caught and the other team brings it in from there: everyone walks to a line-up (the field greys out: not live), then the handler picks up the disc and presents it. Drag anyone to change the line-up and press Disc in. <kbd>N</kbd> plays on when you are stepping by hand. Players have bodies: they can't run through each other and steer around traffic. Very short, fast passes are hard to read and get dropped more often (a 3 m flick about 30%), so the AI prefers a push or a floaty touch pass up close, which is slower and easier to get a hand on. A disc that passes inside a defender's reach is usually blocked, so the AI curves around them or goes over the top; the disc is drawn tilted (a banked around throw is an oval, a hammer flies upside down and nearly on edge, and is harder to catch). A defender screened off their player calls a pick: play stops, they walk back, and the disc is checked in at the stall reached plus one (a disc caught by their player during the pick goes back to the thrower).</p>
   </main>
 
   <aside class="panel" id="panel">
@@ -258,6 +259,8 @@ function advance(dt, path){
     left -= step; done += step;
   }
   pushHist();
+  // a pick stopped play while you were stepping by hand: play the stoppage out (2x) up to the check
+  if (S.setup && S.setup.kind === 'pick' && !autoOn && !drag && !anim) setTimeout(() => { if (!anim && S.setup) animate(6, -1, null, true); }, 0);
 }
 function wait(){ if (S && !S.done) { advance(0.5, null); render(); } }
 function back(){ if (hi > 0) { hi = Math.max(0, hi - 2); S = G.restore(hist[hi]); render(); } }
@@ -329,7 +332,7 @@ function draw(){
   }
   // engine throw lines (thrower's options)
   const res = s.holder >= 0 ? s.lastSearch : null;
-  if (res && res.lines && !s.done) {
+  if (res && res.lines && !s.done && !s.setup) {
     const lines = res.lines.slice(0, 3);
     lines.forEach((l, i) => {
       const close = res.lines[0].q - l.q <= 0.05;
@@ -384,10 +387,25 @@ function draw(){
   else if (s.done && s.done.at) { D = X(s.done.at); h = 0.2; }
   else D = X(s.pos[0]);
   const sc = 1 + Math.max(0, h - 1) / 6;
-  o += `<ellipse class="shadow" cx="${r2(D[0] + (h - 1) * .18)}" cy="${r2(D[1] + (h - 1) * .25)}" rx=".36" ry=".28"/><g class="disc" transform="translate(${f2(D)}) scale(${r2(sc)})"><circle class="d1" r=".4"/><circle class="d2" r=".24"/></g>`;
+  // A disc in the air is drawn tilted: seen from above, a banked disc is an ellipse, narrow across its line
+  // of flight. Flat throws are nearly level, around and inside-out throws bank, a hammer or scoober flies
+  // upside down and nearly on edge before it flattens out, a blade stays on edge.
+  let rot = 0, ratio = 1, flip = false;
+  const f = s.flight;
+  if (f && f.th && !f.pickup) {
+    const q = Math.min(1, (s.t - f.t0) / f.dur), a0 = X(f.th.at(Math.min(.97, q))), a1 = X(f.th.at(Math.min(1, q + .03)));
+    rot = Math.atan2(a1[1] - a0[1], a1[0] - a0[0]) * 180 / Math.PI;
+    const TILT = { flat: .86, push: .92, float: .97, high: .84, huck: .84, io: .6, oi: .6 };
+    const ty = f.th.type;
+    ratio = ty === 'hammer' ? .22 + .38 * q : ty === 'scoober' ? .34 + .3 * q : ty === 'blade' ? .24 + .14 * q : (TILT[ty] || .9);
+    flip = ty === 'hammer' || ty === 'scoober';
+  }
+  const ry = r2(.4 * ratio), ry2 = r2(.24 * ratio);
+  o += `<ellipse class="shadow" cx="${r2(D[0] + (h - 1) * .18)}" cy="${r2(D[1] + (h - 1) * .25)}" rx=".36" ry="${r2(.28 * Math.max(.5, ratio))}" transform="rotate(${r2(rot)} ${r2(D[0] + (h - 1) * .18)} ${r2(D[1] + (h - 1) * .25)})"/>` +
+    `<g class="disc${flip ? ' flip' : ''}" transform="translate(${f2(D)}) rotate(${r2(rot)}) scale(${r2(sc)})"><ellipse class="d1" rx=".4" ry="${ry}"/><ellipse class="d2" rx=".24" ry="${ry2}"/></g>`;
   $('#svg').innerHTML = o;
   const sc0 = s.score || [0, 0];
-  $('#clock').textContent = `Orange ${sc0[0]} : ${sc0[1]} Blue · t ${s.t.toFixed(1)} s · ` + (s.setup ? 'lining up' : s.holder >= 0 ? `${s.flipped ? 'Blue' : 'Orange'} disc, stall ${Math.floor(s.stall)}` : s.flight && s.flight.pickup ? 'picking up the disc' : s.flight ? 'disc in the air' : '');
+  $('#clock').textContent = `Orange ${sc0[0]} : ${sc0[1]} Blue · t ${s.t.toFixed(1)} s · ` + (s.setup ? (s.setup.kind === 'pick' ? 'stopped for a pick' : 'lining up') : s.holder >= 0 ? `${s.flipped ? 'Blue' : 'Orange'} disc, stall ${Math.floor(s.stall)}` : s.flight && s.flight.pickup ? 'picking up the disc' : s.flight ? 'disc in the air' : '');
 }
 function panel(){
   const s = S, v = s.evalNow ?? 0.5;
@@ -424,7 +442,7 @@ function panel(){
   } else {
     const me = s.flight && s.flight.recv === focus;
     $('#youh').textContent = fl + "'s options";
-    yours.innerHTML = `<p class="hint">${me ? `The disc is going to ${fl}. Drag ${fl} to the catch spot (dotted line), or press Wait and the engine runs there.` : 'Disc in the air. Drag someone, or Wait.'}</p>`;
+    yours.innerHTML = `<p class="hint">${me ? `The disc is going to ${fl}. Drag ${fl} to the catch spot (dotted line), or press Wait and the engine runs there.` : 'Disc in the air. Press Wait (Space) or ▶ to play on, or drag someone.'}</p>`;
   }
   // everyone else
   $('#who').innerHTML = PIDS.map((p, i) => `<li><b>${LABELS[p]}</b><span>${S.down && S.down[i] > 0 ? 'on the ground after a layout' : esc(S.macro[i].label || (i < 4 ? 'holds the stack spot' : ''))}<span class="en">burst ${pct(S.energy ? S.energy[i] : 1)}</span>${i === S.holder && S.lastSearch && S.lastSearch.lines && S.lastSearch.lines.length > 1 && S.lastSearch.lines[0].q - S.lastSearch.lines[1].q <= 0.03 ? ' · two good throws' : ''}</span></li>`).join('');
@@ -439,8 +457,13 @@ function panel(){
       (autoOn ? '' : `<span><button class="btn" data-act="back2">Back 2 s</button> <button class="btn primary" data-act="next">${goal ? 'Next point' : 'Play on'}</button></span>`);
   } else if (s.setup) {
     const st = s.setup, hn = st.handler != null ? LABELS[PIDS[st.handler]] : 'The handler';
+    if (st.kind === 'pick') {
+      const dn = LABELS[PIDS[st.picked]], on = LABELS[PIDS[st.picked - 4]];
+      b.hidden = false; b.innerHTML = `<b class="setup">Pick</b><span class="hint">${st.checkAt != null ? `${LABELS[PIDS[s.holder]] || ''} checks the disc in · stall ${Math.floor(s.stall)}` : `play stopped · ${dn} goes back to ${on}`}</span>` + (!autoOn ? `<span><button class="btn primary" data-act="discin">Disc in</button></span>` : '');
+    } else {
     const msg = s.holder >= 0 ? `${hn} presents the disc` : st.go ? `${hn} goes to the disc` : `${team}'s disc where the goal was caught · ${st.hold ? 'arrange, then Disc in' : 'drag anyone to rearrange'}`;
     b.hidden = false; b.innerHTML = `<b class="setup">Lining up</b><span class="hint">${msg}</span>` + (!autoOn && (!st.go || (s.holder >= 0 && st.hold)) ? `<span><button class="btn primary" data-act="discin">Disc in</button></span>` : '');
+    }
   } else b.hidden = true;
   $('#board').classList.toggle('dead', !!(s.done || s.setup));
   const hs = $('#hist'); hs.max = Math.max(0, hist.length - 1); hs.value = hi; $('#histt').textContent = `${S.t.toFixed(1)} s`;
@@ -519,6 +542,13 @@ function animStep(ts){
     G.advance(S, n * 0.05, a.path ? a.who : -1, a.path ? (u => a.path(u0 + (u1 - u0) * u)) : null);
     pushHist(); render();
   }
+  // never stop with the disc in the air: play on (the AI takes over your player) until it lands
+  if (!S.done && a.left < 0.025 && S.flight && !(a.who >= 0 && a.who === S.holder)) {
+    const f = S.flight, rest = f.th ? Math.max(0.05, f.t0 + f.dur - S.t + 0.1) : 1;
+    a.left = a.dur = Math.ceil(rest * 20) / 20; a.path = null; a.who = -1; a.acc = 0;
+  }
+  // nor in the middle of a pick stoppage: play it out to the check
+  if (!S.done && a.left < 0.025 && S.setup && S.setup.kind === 'pick' && !a.setup) { a.left = a.dur = 6; a.path = null; a.who = -1; a.acc = 0; a.setup = true; }
   if (S.done || a.left < 0.025 || (a.who >= 0 && a.who === S.holder) || (a.setup && !S.setup)) { anim = null; render(); return; }
   requestAnimationFrame(animStep);
 }

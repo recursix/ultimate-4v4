@@ -35,7 +35,8 @@
   const clampF = (p, m = 0.3) => [Math.max(m, Math.min(L - m, p[0])), Math.max(m, Math.min(W - m, p[1]))];
   const clone = o => JSON.parse(JSON.stringify(o));
 
-  function rng(seed) { let s = seed >>> 0 || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+  // xorshift32, with the seed scrambled first (small or nearby seeds gave nearly identical first draws)
+  function rng(seed) { let s = seed >>> 0; s = Math.imul(s ^ (s >>> 16), 0x45d9f3b) >>> 0; s = Math.imul(s ^ (s >>> 16), 0x45d9f3b) >>> 0; s = (s ^ (s >>> 16)) >>> 0 || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
 
   // ---------------------------------------------------------------------------------------------
   // State
@@ -105,7 +106,7 @@
     if (h <= P.jumpH && te > 0.5) return 0.4;
     return -1;
   }
-  const CONTEST = 2.0;   // the last metres before the catch are a contest, settled in resolve()
+  const CONTEST = SIM.P.contest + SIM.P.hands;   // the last metres before the catch are a contest, settled in resolve() (same zone as sim.js)
   // Each defender gets one try at the disc, rolled at their closest approach to it. The gap to the disc
   // (beyond their reach; a dive adds SIM.P.layout for a low disc after 0.5 s, as in the throw model)
   // sets the chance: right through them ~99%, the edge of their reach 50%, 30 cm short ~4%.
@@ -128,7 +129,7 @@
         const r = reachAt(Q[2], mark, te);
         if (r >= 0 && dist(Q, B) >= CONTEST) {
           const dive = !mark && Q[2] <= 1.5 && te > 0.5 ? SIM.P.layout : 0;
-          cur = { gap: dist(s.pos[d], Q) - r - dive, Q, r, dd: dist(s.pos[d], Q) };
+          cur = { gap: dist(s.pos[d], Q) - r - dive, Q, r, dd: dist(s.pos[d], Q), te };
         }
       }
       const best = f.near[d];
@@ -138,7 +139,10 @@
       const B0 = f.near[d]; if (!B0 || B0.gap > 3 * GAP_SOFT + 0.4) { if (B0 && !cur) f.near[d] = null; continue; }
       f.tried[d] = 1;
       // same scale as the throw model: the gap as the time to cover it from a standstill, over a 0.1 s logistic
-      const m = B0.gap > 0 ? SIM.tRunFrom(B0.gap, 0, 0, SIM.P.tauSprint) : B0.gap / 3, p = 1 / (1 + Math.exp(m / 0.1));
+      // inside their reach: the deeper, the surer (sim.js inReach); a disc that comes at them before they can
+      // react (reactD after the release, the mark is already set) gets that much leeway
+      const react = Math.max(0, (mark ? SIM.P.reactMark : SIM.P.reactD) - B0.te);
+      const m = (B0.gap > 0 ? SIM.tRunFrom(B0.gap, 0, 0, SIM.P.tauSprint) : SIM.P.inReach * B0.gap) + react, p = 1 / (1 + Math.exp(m / 0.1));
       if (s.dbg) s.dbg.push({ d: PIDS[d], mark, gap: +B0.gap.toFixed(2), dd: +B0.dd.toFixed(2), r: B0.r, pBlock: +p.toFixed(2), pred: +f.p.toFixed(2), pe: +(f.th.pe||0).toFixed(2), bId: f.th.bId, early: +f.th.early.toFixed(2), type: f.th.type, side: f.th.side, te: +te.toFixed(2), Hd: f.A.map(v=>+v.toFixed(1)), M: s.pos[d].map(v=>+v.toFixed(1)), Q: B0.Q.map(v=>+v.toFixed(1)) });
       const win = s.dice === 'random' ? s.rand() < p : p >= 0.5;
       const dived = B0.dd > B0.r + 0.3;
@@ -464,7 +468,8 @@
         s.tgt[i] = roles(s).dump === i ? dumpHome(Hd) : setSpot(s, i, Hd);
       } else {
         if (userHeld(s, i)) { s.tgt[i] = s.macro[i].target.slice(); continue; }
-        if (s.flight && s.flight.th && !s.flight.tried[i] && !(s.down[i] > 0) && i !== s.flight.mark) {   // go for the D if it's reachable (the mark only reaches)
+        // go for the D once they've read the throw (SIM.P.reactD after the release, as in the throw model)
+        if (s.flight && s.flight.th && !s.flight.tried[i] && !(s.down[i] > 0) && i !== s.flight.mark && s.t - s.flight.t0 >= SIM.P.reactD) {   // go for the D if it's reachable (the mark only reaches)
           const X = interceptPoint(s, i);
           if (X) { s.tgt[i] = X; if (s.macro[i].kind !== 'intercept') s.macro[i] = { kind: 'intercept', label: 'goes for the block', since: s.t }; continue; }
         }
@@ -566,14 +571,17 @@
     s.log.push({ t: s.t, text: `${name(d)} calls pick: ${name(pk.j)} screened them off ${name(o)}. Play stops, ${name(d)} goes back.` });
     restartAfterPick(s, d);
   }
+  // A real stoppage (WFDF 17.9 / USAU 17.I.4): everyone stops where they are, the obstructed defender walks
+  // back to their player, then the disc is checked in. The stall resumes at the count reached plus one.
   function restartAfterPick(s, d) {
-    for (let i = 0; i < 8; i++) s.vel[i] = [0, 0];
-    const o = d - 4, T = styleTarget(s, d, s.holder === o ? 'mark' : (s.dstyle[d] || 'under'));
-    s.pos[d] = clampF(T); s.tgt[d] = s.pos[d].slice();
-    s.macro[d] = { kind: s.holder === o ? 'mark' : (s.dstyle[d] || 'under'), label: 'back after the pick', since: s.t };
-    for (let i = 0; i < 4; i++) if (i !== s.holder && ['under', 'deep', 'in', 'up', 'dump-back', 'dump-up', 'clear'].includes(s.macro[i].kind)) s.macro[i] = { kind: 'set', label: 'resets after the pick', target: null, since: s.t - 1 };
+    const o = d - 4, style = s.holder === o ? 'mark' : (s.dstyle[d] || 'under');
+    const spots = s.pos.map(p => clampF(p));
+    spots[d] = clampF(styleTarget(s, d, style));
+    s.setup = { kind: 'pick', spots, t0: s.t, handler: null, go: true, picked: d };
+    if (s.holder >= 0) s.stall = Math.min(STALL - 2, Math.floor(s.stall) + 1);
+    s.dstyle[d] = style === 'mark' ? s.dstyle[d] : style;
+    for (let i = 0; i < 8; i++) if (i !== s.holder) s.macro[i] = { kind: 'set', label: i === d ? `goes back to ${LABELS[PIDS[o]]}` : 'stops for the pick', target: null, since: s.t };
     s.flash = { t: s.t, i: d, text: 'PICK' };
-    s.nextDecision = s.t + SUB;
   }
 
   function resolve(s) {
@@ -591,6 +599,10 @@
           s.log.push({ t: s.t, text: `${name(h)} picks up the disc and presents it.` });
         }
         return;
+      }
+      if (st.kind === 'pick' && st.checkAt == null && !st.hold) {   // the defender is back (or 4 s): check the disc in
+        const back = dist(s.pos[st.picked], st.spots[st.picked]) < 0.6 && s.vel.every(v => len(v) < 1.5);
+        if (back || s.t - st.t0 > 4) { st.checkAt = s.t + 0.6; s.log.push({ t: s.t, text: `${name(st.picked)} is back. ${name(s.holder)} checks the disc in (stall ${Math.floor(s.stall)}).` }); }
       }
       if (!st.hold && st.checkAt != null && s.t >= st.checkAt) discIn(s);
       return;
@@ -737,8 +749,9 @@
   function discIn(s) {
     if (!s.setup) return;
     if (s.holder < 0) { setupGo(s); s.setup.hold = false; return; }   // not picked up yet: go get it first
-    s.setup = null; s.stall = 0; s.vel = s.vel.map(() => [0, 0]); s.nextDecision = s.t;
-    s.energy = s.energy.map(e => Math.min(1, e + 0.3));
+    const pick = s.setup.kind === 'pick';
+    s.setup = null; if (!pick) s.stall = 0; s.vel = s.vel.map(() => [0, 0]); s.nextDecision = s.t;
+    if (!pick) s.energy = s.energy.map(e => Math.min(1, e + 0.3));
     s.macro = PIDS.map((_, i) => i === s.holder ? { kind: 'hold', label: 'holds the disc', target: null, since: s.t } : i < 4 ? { kind: 'set', label: '', target: null, since: s.t - 1 } : { kind: 'under', label: STYLE_LABEL.under, since: s.t });
     s.log.push({ t: s.t, text: 'Disc in: play on!' });
   }
