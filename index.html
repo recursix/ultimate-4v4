@@ -87,6 +87,7 @@ kbd{font-family:var(--f-mono);font-size:11.5px;border:1px solid var(--line);bord
 .pl{cursor:grab}
 .pl circle.you-ring{fill:none;stroke:var(--you);stroke-width:.2}
 .pl circle.you-ring.live{stroke-width:.32}
+.pickflash{fill:var(--you);font-family:var(--f-display);font-weight:700;font-size:.9px;text-anchor:middle;paint-order:stroke;stroke:#000;stroke-width:.18px;letter-spacing:.05px}
 .you-tag{fill:var(--you);font-family:var(--f-display);font-weight:700;font-size:.5px;text-anchor:middle}
 .mlabel{fill:var(--chalk);font-family:var(--f-body);font-weight:600;font-size:.46px;paint-order:stroke;stroke:var(--ez);stroke-width:.14px}
 .marrow{fill:none;stroke:var(--chalk);stroke-width:.07;stroke-dasharray:.25 .18;opacity:.85}
@@ -159,7 +160,7 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
       <button class="btn" id="tele" aria-pressed="false" title="Drag any player without time passing (or hold Shift)">Teleport</button>
       <div class="scrub"><label for="hist">Time</label><input type="range" id="hist" min="0" max="0" value="0"><span id="histt"></span></div>
     </div>
-    <p class="hint">Drag <b>any player</b>: time moves with them and everyone else reacts. Stop moving and time stops. A fast drag sprints and uses up the player's burst (the ring that appears around them); a slow drag (or <kbd>Alt</kbd>) jogs and refills it. Players lay out for discs just out of reach, about half come up with it, and they need a moment to get up. Click a player to see their options. <kbd>Shift</kbd>+drag (or Teleport) moves a player without time passing. <kbd>←</kbd> <kbd>→</kbd> step time by 0.25 s (<kbd>Shift</kbd> for 1 s), <kbd>Space</kbd> waits 0.5 s. <kbd>Shift</kbd>+click an attacker to give them the disc. Click any arrow to play it (it plays out at 2×): a purple line throws, a yellow arrow runs that option, a white arrow plays on until that player finishes their move. Play is continuous: after a turnover the other team picks up the disc and attacks the other way (Orange attacks right, Blue left), after a goal the scored-on team restarts from its endzone. <kbd>N</kbd> plays on when you are stepping by hand.</p>
+    <p class="hint">Drag <b>any player</b>: time moves with them and everyone else reacts. Stop moving and time stops. A fast drag sprints and uses up the player's burst (the ring that appears around them); a slow drag (or <kbd>Alt</kbd>) jogs and refills it. Players lay out for discs just out of reach, about half come up with it, and they need a moment to get up. Click a player to see their options. <kbd>Shift</kbd>+drag (or Teleport) moves a player without time passing. <kbd>←</kbd> <kbd>→</kbd> step time by 0.25 s (<kbd>Shift</kbd> for 1 s), <kbd>Space</kbd> waits 0.5 s. <kbd>Shift</kbd>+click an attacker to give them the disc. Click any arrow to play it (it plays out at 2×): a purple line throws, a yellow arrow runs that option, a white arrow plays on until that player finishes their move. Play is continuous: after a turnover the other team picks up the disc and attacks the other way (Orange attacks right, Blue left), after a goal the scored-on team restarts from its endzone. <kbd>N</kbd> plays on when you are stepping by hand. Players have bodies: they can't run through each other and steer around traffic. A defender screened off their player calls a pick: play stops and they walk back (a disc caught by their player during the pick goes back to the thrower).</p>
   </main>
 
   <aside class="panel" id="panel">
@@ -200,8 +201,8 @@ const face = [];                 // last facing angle per player, so standing pl
 // Defenders hold their arms out in a guarding stance; on the ground (layout) the body stretches along the dive.
 function figure(t, dn){
   if (dn) return `<path class="arm" d="M.2 -.35L1.25 -.5M.2 .35L1.25 .5"/><rect class="sh" x="-1.25" y="-.42" width="1.75" height=".84" rx=".42"/><circle class="hd" cx=".55" r=".44"/>`;
-  const arms = t === 'D' ? `<path class="arm" d="M0 -.68L.78 -.98M0 .68L.78 .98"/>` : '';
-  return arms + `<rect class="sh" x="-.52" y="-.86" width=".78" height="1.72" rx=".39"/><circle class="hd" cx=".1" r=".5"/>`;
+  const arms = t === 'D' ? `<path class="arm" d="M0 -.6L.72 -.88M0 .6L.72 .88"/>` : '';
+  return arms + `<rect class="sh" x="-.46" y="-.74" width=".7" height="1.48" rx=".35"/><circle class="hd" cx=".1" r=".45"/>`;
 }
 let S = null, ctrl = -1, focus = 2, hist = [], hi = 0, evals = [], drag = null, autoOn = false, hover = null, opts = [], scen = {}, ready = false;
 
@@ -360,6 +361,7 @@ function draw(){
       (me ? `<circle class="you-ring${drag && drag.i === i ? ' live' : ''}" r="1.45"/>` : '') + `</g>`;
     const m = s.macro[i];
     const lbl = dn ? 'on the ground, getting up' : drag && drag.i === i ? (drag.jog ? 'jogging (recovering)' : E < 0.25 ? 'tired: cruise speed' : 'sprinting') : m && m.label && m.kind !== 'set' && m.kind !== 'hold' ? m.label : '';
+    if (s.flash && s.flash.i === i && s.t - s.flash.t < 1.6 && s.t >= s.flash.t) o += `<text class="pickflash" x="${r2(P[0])}" y="${r2(P[1] - 1.5)}">PICK!</text>`;
     if (lbl) o += `<text class="mlabel" x="${r2(P[0] + 1.1)}" y="${r2(P[1] + (tm === 'D' ? 1.35 : -1.05))}">${esc(lbl)}</text>`;
   }
   // disc

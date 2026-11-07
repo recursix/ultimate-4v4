@@ -20,6 +20,10 @@
   const VTOP = SIM.P.vmax, VCRUISE = 4.5, VJOG = 3.4, BURST = 2.2, REGEN = 5.0;
   // Layouts: a dive reaches LAY_REACH past normal catching range, the player is down for LAY_DOWN seconds.
   const LAY_REACH = 1.6, LAY_DOWN = 1.4, LAY_COST = 0.2;
+  // Bodies: players can't pass through each other. AI runners steer around anyone in their path (not their own
+  // matchup); contact pushes both apart and costs the momentum they had into each other.
+  // A defender screened off while guarding their player (within PICK_NEAR m) calls a pick.
+  const BODY = 0.9, AVOID = 2.2, PICK_NEAR = 3.5, PICK_COOL = 3;
 
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
   const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
@@ -335,7 +339,7 @@
     const ok = s.dice === 'random' ? s.rand() < rel : rel >= 0.5;
     const defPos = {}; for (let i = 0; i < 4; i++) defPos['D' + (i + 1)] = s.pos[4 + i];
     s.flight = { from: s.holder, recv: r, B: line.B.slice(), A: s.pos[s.holder].slice(), t0: s.t, dur: t.flight, p: t.p, ok, name: t.name, th: t, q: line.q,
-      mark: PIDS.indexOf(SIM.markOf(s.pos[s.holder], defPos)), tried: [] };
+      mark: PIDS.indexOf(SIM.markOf(s.pos[s.holder], defPos)), tried: [], stall0: s.stall };
     if (!ok) {   // off target: lands out of the receiver's reach, a little to one side
       const f = s.flight, u = unit(sub(f.B, f.A)), side = s.rand() < 0.5 ? 1 : -1;
       f.miss = clampF(add(f.B, add(mul([-u[1], u[0]], side * 3.2), mul(u, 0.8))), 0);
@@ -475,16 +479,88 @@
         s.vel[i] = mul(s.vel[i], Math.exp(-dt / TAU_BRAKE)); s.pos[i] = add(s.pos[i], mul(s.vel[i], dt)); energyStep(s, i, dt); continue;
       }
       const d = sub(s.tgt[i], s.pos[i]), dl = len(d), want = effort(s, i), sprint = want >= VTOP;
+      const dir = steer(s, i, unit(d), dl);
       // cuts are run through at full speed (the cut ends on arrival and the clear brakes); a sprint to a
       // catch or a reaction slows only at the very end; everything else eases in over 2.5 m
       const thru = i < 4 && ['under', 'deep', 'in', 'up', 'dump-back', 'dump-up'].includes(s.macro[i].kind);
-      const vdes = mul(unit(d), Math.min(capOf(s, i), want) * (thru ? 1 : Math.min(1, dl / (sprint ? 1.2 : 2.5))));
+      const vdes = mul(dir, Math.min(capOf(s, i), want) * (thru ? 1 : Math.min(1, dl / (sprint ? 1.2 : 2.5))));
       const braking = len(vdes) < len(s.vel[i]) - 0.3 || vdes[0] * s.vel[i][0] + vdes[1] * s.vel[i][1] < 0;
       const k = 1 - Math.exp(-dt / (braking ? TAU_BRAKE : sprint ? TAU_SPRINT : TAU));
       s.vel[i] = add(s.vel[i], mul(sub(vdes, s.vel[i]), k));
       s.pos[i] = [Math.max(-1, Math.min(L + 1, s.pos[i][0] + s.vel[i][0] * dt)), Math.max(-1, Math.min(W + 1, s.pos[i][1] + s.vel[i][1] * dt))];
       energyStep(s, i, dt);
     }
+    collide(s, ctrl);
+  }
+
+  // Steer around players in the way: anyone ahead within AVOID m and less than a body and a half off the line
+  // pushes the heading sideways (around the side they're already on). Own matchup and the downed are ignored.
+  function steer(s, i, dir, dl) {
+    if (dl < 0.3) return dir;
+    let ax = 0, ay = 0;
+    for (let j = 0; j < 8; j++) {
+      if (j === i || j === (i + 4) % 8) continue;
+      const r = sub(s.pos[j], s.pos[i]), dj = len(r);
+      if (dj > AVOID || dj > dl + 0.5) continue;
+      const ahead = r[0] * dir[0] + r[1] * dir[1]; if (ahead <= 0) continue;
+      const lat = [r[0] - dir[0] * ahead, r[1] - dir[1] * ahead], ll = len(lat), wid = BODY * 1.5;
+      if (ll >= wid) continue;
+      const away = ll > 0.05 ? mul(lat, -1 / ll) : (i % 2 ? [-dir[1], dir[0]] : [dir[1], -dir[0]]);
+      const k = (1 - ll / wid) * (1 - dj / AVOID) * 2.2;
+      ax += away[0] * k; ay += away[1] * k;
+    }
+    return ax || ay ? unit([dir[0] + ax, dir[1] + ay]) : dir;
+  }
+  // Contact: separate overlapping players. The thrower is planted (pivot); the player you drag pushes harder.
+  function collide(s, ctrl) {
+    for (let pass = 0; pass < 2; pass++) for (let i = 0; i < 8; i++) for (let j = i + 1; j < 8; j++) {
+      const r = sub(s.pos[j], s.pos[i]), dj = len(r), over = BODY - dj;
+      if (over <= 0) continue;
+      const n = dj > 1e-4 ? mul(r, 1 / dj) : [Math.cos(i + j), Math.sin(i + j)];
+      let wi = i === s.holder ? 0 : i === ctrl ? 0.3 : 1, wj = j === s.holder ? 0 : j === ctrl ? 0.3 : 1;
+      if (!wi && !wj) continue;
+      const sum = wi + wj; wi /= sum; wj /= sum;
+      s.pos[i] = add(s.pos[i], mul(n, -over * wi)); s.pos[j] = add(s.pos[j], mul(n, over * wj));
+      const vr = (s.vel[j][0] - s.vel[i][0]) * n[0] + (s.vel[j][1] - s.vel[i][1]) * n[1];
+      if (vr < 0) { s.vel[i] = add(s.vel[i], mul(n, vr * wi)); s.vel[j] = add(s.vel[j], mul(n, -vr * wj)); }
+      if (pass === 0) checkPick(s, i, j, ctrl), checkPick(s, j, i, ctrl);
+    }
+  }
+  // Defender d in contact with attacker j (not their own) while guarding: are they being screened off?
+  function checkPick(s, d, j, ctrl) {
+    if (d < 4 || j >= 4 || j === d - 4 || s.done || s.down[d] > 0) return;
+    if (s.pickAt && s.pickAt[d] != null && s.t - s.pickAt[d] < PICK_COOL) return;
+    if (s.pendingPick) return;
+    if (s.flight && s.flight.pickup) return;                             // no picks while the disc is being picked up
+    const o = d - 4, gap = dist(s.pos[d], s.pos[o]); if (gap > PICK_NEAR || gap < 1.3) return;
+    if (len(s.vel[o]) < 2.5) return;                                      // it only costs them when their player is running
+    const want = d === ctrl ? unit(s.vel[d]) : unit(sub(s.tgt[d], s.pos[d]));
+    const into = unit(sub(s.pos[j], s.pos[d]));
+    if (want[0] * into[0] + want[1] * into[1] < 0.3) return;
+    const toO = unit(sub(s.pos[o], s.pos[d]));
+    if (toO[0] * into[0] + toO[1] * into[1] < 0.4) return;               // the screen has to be between them and their player
+    if (d !== ctrl && dist(s.tgt[d], s.pos[d]) < 0.8) return;
+    s.pickAt = s.pickAt || PIDS.map(() => null); s.pickAt[d] = s.t;
+    s.pendingPick = { d, j };
+  }
+  // Pick rules (rec version of WFDF 17.9): play stops, the defender walks back to their player.
+  // Disc in the air: play continues; caught by the picked defender's player -> back to the thrower.
+  function applyPick(s) {
+    const pk = s.pendingPick; if (!pk) return; s.pendingPick = null;
+    if (s.done || (s.holder < 0 && !s.flight)) return;   // the possession just ended: nothing to stop
+    const name = i => LABELS[PIDS[i]], d = pk.d, o = d - 4;
+    if (s.flight && !s.flight.pickup) { if (!s.flight.pick) { s.flight.pick = pk; s.log.push({ t: s.t, text: `${name(d)} calls pick on ${name(pk.j)}, the disc is in the air: play on.` }); } return; }
+    s.log.push({ t: s.t, text: `${name(d)} calls pick: ${name(pk.j)} screened them off ${name(o)}. Play stops, ${name(d)} goes back.` });
+    restartAfterPick(s, d);
+  }
+  function restartAfterPick(s, d) {
+    for (let i = 0; i < 8; i++) s.vel[i] = [0, 0];
+    const o = d - 4, T = styleTarget(s, d, s.holder === o ? 'mark' : (s.dstyle[d] || 'under'));
+    s.pos[d] = clampF(T); s.tgt[d] = s.pos[d].slice();
+    s.macro[d] = { kind: s.holder === o ? 'mark' : (s.dstyle[d] || 'under'), label: 'back after the pick', since: s.t };
+    for (let i = 0; i < 4; i++) if (i !== s.holder && ['under', 'deep', 'in', 'up', 'dump-back', 'dump-up', 'clear'].includes(s.macro[i].kind)) s.macro[i] = { kind: 'set', label: 'resets after the pick', target: null, since: s.t - 1 };
+    s.flash = { t: s.t, i: d, text: 'PICK' };
+    s.nextDecision = s.t + SUB;
   }
 
   function resolve(s) {
@@ -532,6 +608,15 @@
         if (best.pD > 0.25) s.log.push({ t: s.t, text: `${name(r)} wins the contest with ${name(best.d)}.` });
       }
     }
+    if (f.ok && there && !f.miss && f.pick && f.pick.d - 4 === r) {   // caught by the picked defender's player: back to the thrower
+      const th = f.from;
+      s.holder = th; s.pos[th] = f.A.slice(); s.stall = Math.min(STALL - 2, (f.stall0 || 0) + 1); s.flight = null; s.lastSearch = null;
+      s.macro[th] = { kind: 'hold', label: 'holds the disc', target: null, since: s.t };
+      for (let i = 4; i < 8; i++) if (['chase', 'intercept'].includes(s.macro[i].kind)) { s.macro[i] = { kind: 'under', label: STYLE_LABEL.under, since: s.t }; s.dstyle[i] = 'under'; }
+      s.log.push({ t: s.t, text: `${name(r)} catches it, but there was a pick on the play: the disc goes back to ${name(th)} (stall ${Math.floor(s.stall)}).` });
+      restartAfterPick(s, f.pick.d);
+      return;
+    }
     if (f.ok && there && !f.miss) {
       const keep = s.pos[r].slice();
       s.holder = r; s.pos[r] = laid ? keep : B.slice(); s.vel[r] = laid ? s.vel[r] : [0, 0]; s.stall = 0; s.flight = null; s.lastSearch = null;
@@ -540,6 +625,7 @@
       s.macro[r] = { kind: 'hold', label: 'holds the disc', target: null, since: s.t };
       if (B[0] >= GOAL_X) { s.done = { reason: 'goal', text: 'Goal!' }; s.score[s.flipped ? 1 : 0]++; s.log.push({ t: s.t, text: `${name(r)} ${laid ? 'lays out for it in the endzone' : 'catches it in the endzone'}. Goal!` }); }
       else s.log.push({ t: s.t, text: laid ? `${name(r)} lays out and makes the catch!` : `${name(r)} catches it.` });
+      if (f.pick && !s.done) { s.log.push({ t: s.t, text: `Play stops for the pick: ${name(f.pick.d)} goes back to ${name(f.pick.d - 4)}.` }); restartAfterPick(s, f.pick.d); }
     } else {
       const why = f.miss ? `the throw sails wide of ${name(r)}` : laid ? `${name(r)} lays out but can't hold on` : !there ? `${name(r)} wasn't there to catch it` : 'the defense gets a hand on it';
       turnover(s, why, B);
@@ -600,6 +686,7 @@
       physics(s, SUB, ctrl, ctrlPath ? ctrlPath(k / steps) : null);
       s.t = Math.round((s.t + SUB) * 1000) / 1000;
       resolve(s);
+      if (s.pendingPick) applyPick(s);
       done++;
     }
     s.evalNow = evalNow(s);
