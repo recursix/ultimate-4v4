@@ -21,7 +21,7 @@
   let RISK = 0.4; const PRIOR_W = 0.15, HOLD_GAIN = 0.04;   // rec handlers avoid risky throws (risk weight), and unusual ones (prior)
   const USER_HOLD = 1.0;   // seconds an offensive player you moved keeps your spot (a defender stays parked until the next throw)
   // Energy: sprinting above cruise speed drains a burst bucket; jogging or standing refills it.
-  const VTOP = SIM.P.vmax, VCRUISE = 4.5, VJOG = 3.4, BURST = 2.2, REGEN = 5.0;
+  const VTOP = SIM.P.vmax, VCRUISE = 4.5, VJOG = 3.4;
   // Layouts: a dive reaches LAY_REACH past normal catching range, the player is down for LAY_DOWN seconds.
   const LAY_REACH = 1.6, LAY_DOWN = 1.4, LAY_COST = 0.2;
   // Bodies: players can't pass through each other. AI runners steer around anyone in their path (not their own
@@ -54,7 +54,7 @@
       flight: null, done: null, nextDecision: 0, seed: opts.seed || 7, dice: opts.dice || 'expected',
       macro: PIDS.map(() => ({ kind: 'set', label: '', target: null, since: 0 })),
       dstyle: PIDS.map(() => 'under'), log: [], lastSearch: null, evalNow: null,
-      energy: PIDS.map(() => 1), down: PIDS.map(() => 0), lay: PIDS.map(() => null), jog: false,
+      energy: PIDS.map(() => 1), reserve: PIDS.map(() => 1), down: PIDS.map(() => 0), lay: PIDS.map(() => null), jog: false,
       flipped: false, score: [0, 0], poss: 1,   // flipped: team B has the disc (the frame is mirrored so offense still attacks +x)
     };
     s.macro[s.holder] = { kind: 'hold', label: 'holds the disc', target: null, since: 0 };
@@ -64,8 +64,20 @@
   function snapshot(s) { const c = clone(Object.assign({}, s, { rand: null, flight: s.flight && Object.assign({}, s.flight, { th: null }) })); c._flightTh = s.flight && s.flight.th; return c; }
   function restore(c) { const s = clone(Object.assign({}, c, { _flightTh: null })); if (s.flight) s.flight.th = c._flightTh; s.rand = rng(Math.floor(c.t * 1000) + c.seed); delete s._flightTh; return s; }
 
-  // top speed right now: the full sprint while there is burst left, cruise speed when it is empty
-  const capOf = (s, i) => VCRUISE + (VTOP - VCRUISE) * Math.min(1, s.energy[i] / 0.25);
+  // Two energy tanks (sandbox/anim-board, Energy section):
+  //  burst (s.energy, phosphocreatine): ~8 s of all-out effort, refills with a 30 s time constant; gates top
+  //    speed and the explosive push. Empty still leaves ~85% of top speed: repeat sprints fade, not collapse.
+  //  reserve (s.reserve, critical speed + D'): every metre faster than 3.8 m/s drains a 110 m reserve, which
+  //    refills slowly (150 s), mostly between points, so long points and long games leave heavy legs.
+  const EN = { CS: 3.8, DP: 110, BURST: 8, BTAU: 30, RTAU: 150, REST: 60 };
+  const reserveOf = (s, i) => s.reserve ? s.reserve[i] : 1;
+  const capOf = (s, i) => VTOP * (0.84 + 0.16 * Math.min(1, s.energy[i] / 0.35)) * (0.8 + 0.2 * reserveOf(s, i));
+  const pushOf = (s, i) => (0.6 + 0.4 * Math.min(1, s.energy[i] / 0.35)) * (0.8 + 0.2 * reserveOf(s, i));
+  // between points everyone gets about a minute of rest
+  function rest(s, sec) {
+    s.energy = s.energy.map(b => b + (1 - b) * (1 - Math.exp(-sec / EN.BTAU)));
+    if (s.reserve) s.reserve = s.reserve.map(r => r + (1 - r) * (1 - Math.exp(-sec / EN.RTAU)));
+  }
   // speed the AI wants: sprint for cuts, catches and reactions, cruise to clear, jog to reset (and recover)
   function effort(s, i) {
     if (s.setup) return VJOG;   // walking to the line-up between points
@@ -80,9 +92,14 @@
     return VJOG + 0.6;
   }
   function energyStep(s, i, dt) {
-    const v = len(s.vel[i]);
-    if (v > VCRUISE) s.energy[i] = Math.max(0, s.energy[i] - dt * (v - VCRUISE) / (VTOP - VCRUISE) / BURST);
-    else s.energy[i] = Math.min(1, s.energy[i] + dt * (1 - v / VCRUISE) / REGEN);
+    if (!s.reserve) s.reserve = s.pos.map(() => 1);
+    const v = len(s.vel[i]), a = s.acc ? s.acc[i] : [0, 0], along = v > 0.05 ? (a[0] * s.vel[i][0] + a[1] * s.vel[i][1]) / v : 0;
+    // burst drains with how hard you're going: speed above a jog plus hard acceleration
+    const effortNow = Math.min(1, Math.max(0, (v - 4.2) / 3.0)) + Math.min(0.8, Math.max(0, along / 6));
+    if (effortNow > 0.05) s.energy[i] = Math.max(0, s.energy[i] - effortNow * dt / EN.BURST);
+    else s.energy[i] += (1 - s.energy[i]) * (1 - Math.exp(-dt / EN.BTAU));
+    if (v > EN.CS) s.reserve[i] = Math.max(0, s.reserve[i] - (v - EN.CS) * dt / EN.DP);
+    else s.reserve[i] += (1 - s.reserve[i]) * (1 - Math.exp(-dt / EN.RTAU)) * (1 - v / EN.CS);
   }
   function layOut(s, i, P) {
     const dir = unit(sub(P, s.pos[i]));
@@ -312,7 +329,7 @@
   // "Hold" = the best throw half a second from now: everyone keeps moving, the disc stays put.
   function holdRollout(s) {
     const c = { t: s.t, pos: s.pos.map(p => p.slice()), vel: s.vel.map(v => v.slice()), acc: (s.acc || s.pos.map(() => [0, 0])).map(a => a.slice()), tgt: s.tgt.map(p => p.slice()), vmax: s.vmax,
-      holder: s.holder, stall: s.stall, flight: null, macro: s.macro, dstyle: s.dstyle, energy: s.energy.slice(), down: s.down.slice(), lay: s.lay.slice() };
+      holder: s.holder, stall: s.stall, flight: null, macro: s.macro, dstyle: s.dstyle, energy: s.energy.slice(), reserve: (s.reserve || s.pos.map(() => 1)).slice(), down: s.down.slice(), lay: s.lay.slice() };
     for (let k = 0; k < Math.round(DECIDE / SUB); k++) { targets(c, -1); physics(c, SUB, -1, null); c.t += SUB; c.stall += SUB; }
     return c;
   }
@@ -542,7 +559,7 @@
     const ades = mul(sub(vdes, v), 1 / M.TC);
     const h = sp > 0.05 ? mul(v, 1 / sp) : len(vdes) > 0.05 ? unit(vdes) : [1, 0], n = [-h[1], h[0]];
     let al = ades[0] * h[0] + ades[1] * h[1], at = ades[0] * n[0] + ades[1] * n[1];
-    const push = M.A0 * (sprint ? 1 : M.JOG) * Math.max(0, 1 - sp / VTOP);
+    const push = M.A0 * (sprint ? 1 : M.JOG) * pushOf(s, i) * Math.max(0, 1 - sp / VTOP);
     al = al > 0 ? Math.min(al, push) : Math.max(al, -M.B0 * (1 - M.BS * sp / VTOP));
     at = Math.max(-M.ALAT, Math.min(M.ALAT, at));
     const a = clampLen(add(mul(h, al), mul(n, at)), M.G);
@@ -809,7 +826,7 @@
     if (!keep) {
       s.flipped = !s.flipped;
       s.pos = swap(s.pos).map(mirror); s.vel = swap(s.vel).map(v => [-v[0], -v[1]]); s.tgt = swap(s.tgt).map(mirror);
-      s.energy = swap(s.energy); s.down = swap(s.down);
+      s.energy = swap(s.energy); if (s.reserve) s.reserve = swap(s.reserve); s.down = swap(s.down);
       s.lay = swap(s.lay).map(l => l && Object.assign({}, l, { dir: [-l.dir[0], -l.dir[1]] }));
     }
     s.done = null; s.flight = null; s.lastSearch = null; s.stall = 0;
@@ -867,7 +884,7 @@
     if (s.holder < 0) { setupGo(s); s.setup.hold = false; return; }   // not picked up yet: go get it first
     const pick = s.setup.kind === 'pick';
     s.setup = null; if (!pick) s.stall = 0; s.vel = s.vel.map(() => [0, 0]); s.nextDecision = s.t;
-    if (!pick) s.energy = s.energy.map(e => Math.min(1, e + 0.3));
+    if (!pick) rest(s, EN.REST);
     s.macro = PIDS.map((_, i) => i === s.holder ? { kind: 'hold', label: 'holds the disc', target: null, since: s.t } : i < 4 ? { kind: 'set', label: '', target: null, since: s.t - 1 } : { kind: 'under', label: STYLE_LABEL.under, since: s.t });
     s.log.push({ t: s.t, text: 'Disc in: play on!' });
   }
