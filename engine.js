@@ -83,7 +83,7 @@
             const vel = st.vel.map((v, i) => i === r ? [0, 0] : v.slice());
             v1 = value(pos, vel, r, 0);
           }
-          const prior = SIM.TYPES[t.type] ? ({ flat: 1, push: 1, io: .92, oi: .92, high: .95, hammer: .9, scoober: .9, blade: .85, huck: .95 })[t.type] : 1;
+          const prior = SIM.TYPES[t.type] ? ({ flat: 1, push: 1, float: .97, io: .92, oi: .92, high: .95, hammer: .9, scoober: .9, blade: .85, huck: .95 })[t.type] : 1;
           lines.push({ kind: 'throw', to: PIDS[r], B, lead: rad, throw: t, p: t.p, vAfter: v1, q: t.p * v1, prior });
         }
       }

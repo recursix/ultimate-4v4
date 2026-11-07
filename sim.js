@@ -22,6 +22,9 @@
     hands: 0.6,       // the receiver catches this far in front of their body
     body: 1.0,        // two players closer than this (centre to centre) are in each other's way
     stall: 8,         // default stall count (TUC indoor 4s uses 8, USAU 4v4 uses 7)
+    readT: 0.30,      // a receiver needs about this long after the release to read a disc's flight
+    readW: 0.06,      // how sharply catching gets harder below readT (logistic width, s)
+    dropMax: 0.40,    // drop chance for a point-blank zinger
     drag: 0.0156,     // flat-disc drag factor per metre (deceleration ~ drag * v^2)
   };
 
@@ -30,6 +33,7 @@
   // rel(L): execution reliability for a rec player before any defender is considered.
   const TYPES = {
     flat:    { v0: 17, v: 15,  h0: 1.1, h1: 1.2, apex: () => 1.5,                bend: 0,  bulge: () => 0,                    off: 0.9, min: 1,  max: 28, rel: L => 0.97 - Math.max(0, L - 18) * 0.008, over: false },
+    float:   { v: 6,   h0: 1.0, h1: 1.3, apex: L => 1.6 + 0.08 * L,          bend: 0,  bulge: () => 0,                    off: 0.6, min: 0,  max: 9,  rel: () => 0.97, over: false },
     push:    { v0: 9, v: 9,   h0: 1.0, h1: 1.1, apex: () => 1.2,                bend: 0,  bulge: () => 0,                    off: 0.7, min: 0,  max: 7,  rel: () => 0.98, over: false },
     io:      { v0: 15, v: 13,  h0: 1.1, h1: 1.2, apex: () => 1.5,                bend: -1, bulge: L => Math.min(3, 0.18 * L), off: 0.9, min: 6,  max: 26, rel: L => 0.80 - Math.max(0, L - 15) * 0.008, over: false },
     oi:      { v0: 15, v: 13,  h0: 1.1, h1: 1.2, apex: () => 1.5,                bend: 1,  bulge: L => Math.min(3.5, 0.2 * L), off: 1.0, min: 6,  max: 26, rel: L => 0.80 - Math.max(0, L - 15) * 0.008, over: false },
@@ -39,8 +43,8 @@
     blade:   { v: 9,   h0: 2.4, h1: 1.0, apex: L => Math.min(6, 3 + 0.2 * L), bend: 0, bulge: () => 0,                off: 0.3, min: 8,  max: 24, rel: () => 0.62, over: true },
     huck:    { v0: 19, v: 17,  h0: 1.3, h1: 1.7, apex: L => 2 + 0.12 * L,        bend: 0,  bulge: () => 0,                    off: 0.9, min: 16, max: 70, rel: L => 0.80 - Math.max(0, L - 18) * 0.01, over: false },
   };
-  const TYPE_ORDER = ['flat', 'push', 'io', 'oi', 'high', 'hammer', 'scoober', 'blade', 'huck'];
-  const TYPE_LABEL = { flat: 'Flat throw', push: 'Push pass', io: 'Inside-out', oi: 'Around (outside-in)', high: 'High release', hammer: 'Hammer', scoober: 'Scoober', blade: 'Blade', huck: 'Huck' };
+  const TYPE_ORDER = ['flat', 'push', 'float', 'io', 'oi', 'high', 'hammer', 'scoober', 'blade', 'huck'];
+  const TYPE_LABEL = { flat: 'Flat throw', push: 'Push pass', float: 'Touch pass (floaty)', io: 'Inside-out', oi: 'Around (outside-in)', high: 'High release', hammer: 'Hammer', scoober: 'Scoober', blade: 'Blade', huck: 'Huck' };
 
   const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
   const sig = x => 1 / (1 + Math.exp(-x));
@@ -110,6 +114,7 @@
     switch (type) {
       case 'flat': return hand;
       case 'push': return 'push pass';
+      case 'float': return 'floaty touch pass';
       case 'io': return 'inside-out ' + hand;
       case 'oi': return 'around ' + hand;
       case 'high': return 'high-release ' + hand;
@@ -164,11 +169,13 @@
     const pe = sig(early / 0.1);
     const pc = sig((late + 0.05) / 0.15);
     const rel = clamp(T.rel(L), 0.05, 0.99);
-    const p = inBounds ? rel * pe * pc : 0;
+    // A fast disc from close range arrives before the receiver can read it: drops go up below P.readT of flight.
+    const pk = 1 - P.dropMax * sig((P.readT - tr.flight) / P.readW);
+    const p = inBounds ? rel * pe * pc * pk : 0;
     return {
       type, side, name: throwName(type, side), over: T.over, len: L, flight: tr.flight,
       early, late, blocker: early < 0.25 ? blocker : null, contester: late < 0.2 ? contester : null,
-      rel, pe, pc, bId: blocker, cId: contester, bS, cS, tAt: tr.tAt,
+      rel, pe, pc, pk, bId: blocker, cId: contester, bS, cS, tAt: tr.tAt,
       p, inBounds, goal: !!f && ctx.B[0] >= f.L - f.ez && inBounds, at: tr.at,
     };
   }

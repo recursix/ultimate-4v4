@@ -293,7 +293,7 @@
   // Lead a running receiver: aim each throw type at where they will be when it arrives.
   function leadLines(s, i, n) {
     const out = [], A = s.pos[s.holder], P = s.pos[i], V = s.vel[i], defs = defsOf(s, A);
-    const PRIOR = { flat: 1, push: 1, io: .92, oi: .92, high: .95, hammer: .9, scoober: .9, blade: .85, huck: .95 };
+    const PRIOR = { flat: 1, push: 1, float: .97, io: .92, oi: .92, high: .95, hammer: .9, scoober: .9, blade: .85, huck: .95 };
     for (const type of SIM.TYPE_ORDER) for (const side of [1, -1]) {
       // the catch spot depends on the flight time, which depends on the spot: one fixed-point step is enough
       const tf = SIM.trajectory(type, A, add(P, mul(V, 0.6)), side).flight;
@@ -607,6 +607,11 @@
         if (win) return turnover(s, `${name(best.d)} ${best.front ? 'steps in front and takes it' : 'gets a hand on it at the catch'}`, B);
         if (best.pD > 0.25) s.log.push({ t: s.t, text: `${name(r)} wins the contest with ${name(best.d)}.` });
       }
+    }
+    // Too fast from too close: the receiver couldn't read it (sim.js pk, from the flight time)
+    if (f.ok && there && !f.miss && f.th && f.th.pk != null && f.th.pk < 0.999) {
+      const drop = s.dice === 'random' ? s.rand() > f.th.pk : f.th.pk < 0.5;
+      if (drop) return turnover(s, `${name(r)} drops it: too fast from too close to read`, B);
     }
     if (f.ok && there && !f.miss && f.pick && f.pick.d - 4 === r) {   // caught by the picked defender's player: back to the thrower
       const th = f.from;
