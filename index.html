@@ -507,12 +507,13 @@ function draw(){
     // energy shows on the body itself: a low reserve drains the colour toward grey, a low burst darkens the head
     if (!dn) body = tintBody(body, tm, E, s.reserve ? s.reserve[i] : 1);
     const tx = dn && s.lay[i] ? [r2(Math.cos(face[i]) * .55), r2(Math.sin(face[i]) * .55)] : [r2(Math.cos(face[i] || 0) * .1), r2(Math.sin(face[i] || 0) * .1)];
-    o += `<g class="pl ${tm}${dn ? ' down' : ''}" data-i="${i}" transform="translate(${f2(P)})"><circle r="1.1" fill="transparent"/>` + body + `<text x="${tx[0]}" y="${tx[1]}">${LABELS[pid]}</text>` +
+    o += `<g class="pl ${tm}${dn ? ' down' : ''}" data-i="${i}" transform="translate(${f2(P)})"><circle r="1.1" fill="transparent"/>` + body + (me ? `<text x="${tx[0]}" y="${tx[1]}">${LABELS[pid]}</text>` : '') +   // only the selected player is named on the field
       (me ? `<circle class="you-ring${drag && drag.i === i ? ' live' : ''}" r="1.45"/>` : '') + `</g>`;
     const m = s.macro[i];
     const lbl = dn ? 'on the ground, getting up' : drag && drag.i === i ? (drag.jog ? 'jogging (recovering)' : E < 0.25 ? 'tired: cruise speed' : 'sprinting') : m && m.label && m.kind !== 'set' && m.kind !== 'hold' ? m.label : '';
     if (s.flash && s.flash.i === i && s.t - s.flash.t < 1.6 && s.t >= s.flash.t) o += `<text class="pickflash" x="${r2(P[0])}" y="${r2(P[1] - 1.5)}">PICK!</text>`;
-    if (lbl) o += `<text class="mlabel" x="${r2(P[0] + 1.1)}" y="${r2(P[1] + (tm === 'D' ? 1.35 : -1.05))}">${esc(lbl)}</text>`;
+    // action labels live in the side panel ("What everyone is doing"), not on the field
+    if (false && lbl) o += `<text class="mlabel" x="${r2(P[0] + 1.1)}" y="${r2(P[1] + (tm === 'D' ? 1.35 : -1.05))}">${esc(lbl)}</text>`;
   }
   // disc
   let D, h = 1;
