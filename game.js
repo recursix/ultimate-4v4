@@ -125,7 +125,7 @@
     f.near = f.near || [];
     for (let d = 4; d < 8; d++) {
       if (f.tried[d] || s.down[d] > 0) continue;
-      const mark = d === f.mark && dist(P1, f.A) < 4;
+      const mark = (d === f.mark || (f.set && f.set.includes(d))) && dist(P1, f.A) < 4;
       let cur = null;
       if (te >= (mark ? 0.05 : 0.15)) {                                  // hands need a moment to react
         const seg = sub(P1, P0), sl = seg[0] * seg[0] + seg[1] * seg[1];
@@ -183,11 +183,13 @@
   function defsOf(s, A) {
     const defPos = {}; for (let i = 0; i < 4; i++) defPos['D' + (i + 1)] = s.pos[4 + i];
     const mk = SIM.markOf(A, defPos);
-    return [4, 5, 6, 7].map(i => ({ id: PIDS[i], pos: s.pos[i], mark: PIDS[i] === mk, vel: s.vel[i], vmax: capOf(s, i), delay: Math.max(0, s.down[i]) }));
+    // a second defender standing next to the thrower is set and reaching too, not reacting from scratch
+    return [4, 5, 6, 7].map(i => ({ id: PIDS[i], pos: s.pos[i], mark: PIDS[i] === mk || dist(s.pos[i], A) < SET_R, vel: s.vel[i], vmax: capOf(s, i), delay: Math.max(0, s.down[i]) }));
   }
   // a defender you placed stays parked until the next throw; an offensive player for USER_HOLD seconds
   const userHeld = (s, i) => s.macro[i].kind === 'user' && (i >= 4 ? s.holder >= 0 : s.t - s.macro[i].since < USER_HOLD);
 
+  const SET_R = 2.5, DOUBLE_R = 3;   // a defender this close to the thrower is set like a mark; the double-team radius
   const discPoint = s => s.holder >= 0 ? s.pos[s.holder] : s.flight.B;
   const value = (s, pos, vel, holder, stall) => ENG.ready() ? ENG.value(pos || s.pos, vel || s.vel, holder == null ? s.holder : holder, Math.min(7.5, stall == null ? s.stall : stall)) : 0.5;
 
@@ -215,16 +217,18 @@
     const depth = rank === 0 ? 8 : 14;
     return [Math.max(4, Math.min(28, Hd[0] + depth)), Math.max(2.5, Math.min(15.5, s.pos[i][1]))];
   }
-  function dumpHome(Hd) { const y = Hd[1] - 3.5 < 1 ? Hd[1] + 3.5 : Hd[1] - 3.5; return clampF([Hd[0] - 3, y]); }
+  // the mark stands on the -y side, so -y is the break side: the dump sits there, ~5 m off, out of the open lanes
+  function dumpHome(Hd) { return clampF(Hd[1] - 4 >= 1 ? [Hd[0] - 3.2, Hd[1] - 4] : [Hd[0] - 5, Math.max(1, Hd[1] - 1.5)], 0.6); }
 
   function offenseOptions(s, i) {
     const Hd = discPoint(s), O = s.pos[i], { dump } = roles(s), opts = [];
     const push = (kind, label, T) => opts.push({ kind, label, target: clampF(T, 0.6) });
     if (i === dump) {
       push('set', 'sit as the dump', dumpHome(Hd));
-      const sideY = Hd[1] - 5.5 < 0.8 ? Hd[1] + 5.5 : Hd[1] - 5.5;
-      push('dump-back', 'dump: back and away', [Hd[0] - 2, sideY]);
-      push('dump-up', 'dump: up the line', [Hd[0] + 4, Hd[1] - 4 < 0.8 ? Hd[1] + 4 : Hd[1] - 4]);
+      push('dump-back', 'dump: back and away', Hd[1] - 5.5 >= 0.8 ? [Hd[0] - 2, Hd[1] - 5.5] : [Hd[0] - 6, Hd[1] + 1]);
+      // up the line on the dump's own side: never across the thrower's face
+      const up = O[1] <= Hd[1] ? (Hd[1] - 4 >= 0.8 ? -4 : -Math.max(1.5, Hd[1] - 0.8)) : 4;
+      push('dump-up', 'dump: up the line', [Hd[0] + 4, Hd[1] + up]);
     } else {
       push('set', 'hold the stack spot', setSpot(s, i, Hd));
       push('under', 'cut under (open side)', [Hd[0] + 5.5, Hd[1] + 4]);
@@ -260,12 +264,16 @@
     const o = i - 4, O = s.pos[o], Hd = discPoint(s), uvec = sub(Hd, O), u = unit(uvec);
     if (s.holder === o) return add(O, [0.7, -1.0]);
     if (s.flight && s.flight.recv === o) return add(s.flight.B, mul(unit(sub(O, s.flight.B)), 0.8));
+    let T;
     switch (style) {
-      case 'front': return add(O, add(mul(u, 1.8), [0, 0.3]));
-      case 'deep': return add(O, [1.3, 0.3]);
-      case 'poach': return add(O, mul(uvec, 0.38));
-      default: return add(O, mul(unit(add(u, [0, 0.6])), 1.2));
+      case 'front': T = add(O, add(mul(u, 1.8), [0, 0.3])); break;
+      case 'deep': T = add(O, [1.3, 0.3]); break;
+      case 'poach': T = add(O, mul(uvec, 0.38)); break;
+      default: T = add(O, mul(unit(add(u, [0, 0.6])), 1.2));
     }
+    // no double team: only the mark may be within 3 m of the thrower, unless guarding someone who is too
+    if (s.holder >= 0 && dist(O, Hd) >= DOUBLE_R && dist(T, Hd) < DOUBLE_R + 0.3) T = add(Hd, mul(unit(sub(T, Hd)), DOUBLE_R + 0.3));
+    return T;
   }
   const STYLE_LABEL = { intercept: 'goes for the block', under: 'plays under, open side', front: 'fronts', deep: 'plays deep side', poach: 'poaches into the lane', mark: 'marks (force flick)', chase: 'chases the catch' };
 
@@ -358,6 +366,7 @@
     const defPos = {}; for (let i = 0; i < 4; i++) defPos['D' + (i + 1)] = s.pos[4 + i];
     s.flight = { from: s.holder, recv: r, B: line.B.slice(), A: s.pos[s.holder].slice(), t0: s.t, dur: t.flight, p: t.p, ok, name: t.name, th: t, q: line.q,
       mark: PIDS.indexOf(SIM.markOf(s.pos[s.holder], defPos)), tried: [], stall0: s.stall };
+    s.flight.set = [4, 5, 6, 7].filter(i => i !== s.flight.mark && dist(s.pos[i], s.flight.A) < SET_R);
     if (!ok) {   // off target: lands out of the receiver's reach, a little to one side
       const f = s.flight, u = unit(sub(f.B, f.A)), side = s.rand() < 0.5 ? 1 : -1;
       f.miss = clampF(add(f.B, add(mul([-u[1], u[0]], side * 3.2), mul(u, 0.8))), 0);
@@ -438,7 +447,11 @@
       // thrower
       if (sideHook) sideHook(s, 'off');
       if (s.holder !== ctrl && s.stall >= LOOK && !(s.down[s.holder] > 0)) {
-        const res = analyseThrower(s, ctrl);
+        const res = analyseThrower(believed(s), ctrl);
+        if (res && res.lines.length && s.belief) {   // keep reading: the best option, sometimes the next one
+          const alt = res.lines[1] && s.rand() < 0.35 ? res.lines[1] : res.lines[0];
+          s.belief.look = PIDS.indexOf(alt.to);
+        }
         s.lastSearch = res;
         if (res && res.lines.length) {
           const ranked = res.lines;
@@ -474,6 +487,26 @@
       return;
     }
     const { Hd } = roles(s);
+    targetsMain(s, ctrl, Hd);
+    if (s.holder >= 0) routeAround(s, ctrl, Hd);
+  }
+  // Teammates repositioning go around the thrower (behind, ~4 m off), not through the throwing space.
+  function routeAround(s, ctrl, H) {
+    for (let i = 0; i < 4; i++) {
+      if (i === ctrl || i === s.holder || (s.flight && s.flight.recv === i) || userHeld(s, i)) continue;
+      const P = s.pos[i], T = s.tgt[i], d = sub(T, P), L2 = d[0] * d[0] + d[1] * d[1];
+      if (L2 < 1) continue;
+      const u = Math.max(0, Math.min(1, ((H[0] - P[0]) * d[0] + (H[1] - P[1]) * d[1]) / L2));
+      const C = add(P, mul(d, u));
+      if (dist(C, H) >= 3.5 || dist(T, H) < 3.5) continue;
+      // step around a 4.3 m arc, always the way that goes behind the thrower (through angle pi, never upfield)
+      const aP = Math.atan2(P[1] - H[1], P[0] - H[0]), aT = Math.atan2(T[1] - H[1], T[0] - H[0]);
+      const toPos = a => (a + 2 * Math.PI) % (2 * Math.PI);          // 0..2pi, upfield = 0
+      const delta = toPos(aT) - toPos(aP), a = aP + Math.sign(delta || 1) * Math.min(Math.abs(delta), 0.9);
+      s.tgt[i] = clampF([H[0] + 4.3 * Math.cos(a), H[1] + 4.3 * Math.sin(a)], 0.6);
+    }
+  }
+  function targetsMain(s, ctrl, Hd) {
     for (let i = 0; i < 8; i++) {
       if (i === ctrl) continue;
       if (i < 4) {
@@ -481,8 +514,9 @@
         if (i === s.holder) { s.tgt[i] = s.pos[i].slice(); continue; }
         if (s.flight && s.flight.recv === i) { s.tgt[i] = s.flight.B.slice(); continue; }
         if (userHeld(s, i)) { s.tgt[i] = m.target.slice(); continue; }
-        if (m.target && m.kind !== 'set') { s.tgt[i] = m.target.slice(); continue; }
+        if (m.target && m.kind !== 'set') { s.tgt[i] = m.kind === 'clear' && s.holder >= 0 ? keepOut(m.target, Hd, 4) : m.target.slice(); continue; }
         s.tgt[i] = roles(s).dump === i ? dumpHome(Hd) : setSpot(s, i, Hd);
+        if (s.holder >= 0) s.tgt[i] = keepOut(s.tgt[i], Hd, 4);   // spacing: stack spots and clears stay off the thrower
       } else {
         if (userHeld(s, i)) { s.tgt[i] = s.macro[i].target.slice(); continue; }
         // go for the D once they've read the throw (SIM.P.reactD after the release, as in the throw model)
@@ -526,6 +560,7 @@
       energyStep(s, i, dt);
     }
     collide(s, ctrl);
+    noDouble(s);
   }
 
   // Steer around players in the way: anyone ahead within AVOID m and less than a body and a half off the line
@@ -547,6 +582,20 @@
     return ax || ay ? unit([dir[0] + ax, dir[1] + ay]) : dir;
   }
   // Contact: separate overlapping players. The thrower is planted (pivot); the player you drag pushes harder.
+  const keepOut = (T, C, r) => dist(T, C) >= r ? T : clampF(add(C, mul(len(sub(T, C)) > 1e-3 ? unit(sub(T, C)) : [-1, 0], r)), 0.6);
+  // Double team rule: while the disc is held, only the mark may be within 3 m of the thrower, unless
+  // that defender's own player is within 3 m too. Players step back out of the circle.
+  function noDouble(s) {
+    if (s.holder < 0 || s.setup) return;
+    const H = s.pos[s.holder];
+    for (let d = 4; d < 8; d++) {
+      if (d === s.holder + 4 || dist(s.pos[d - 4], H) < DOUBLE_R) continue;
+      const r = sub(s.pos[d], H), l = len(r); if (l >= DOUBLE_R) continue;
+      const n = l > 1e-3 ? mul(r, 1 / l) : [-1, 0];
+      s.pos[d] = add(H, mul(n, DOUBLE_R));
+      const vn = s.vel[d][0] * n[0] + s.vel[d][1] * n[1]; if (vn < 0) s.vel[d] = sub(s.vel[d], mul(n, vn));
+    }
+  }
   function collide(s, ctrl) {
     for (let pass = 0; pass < 2; pass++) for (let i = 0; i < 8; i++) for (let j = i + 1; j < 8; j++) {
       const r = sub(s.pos[j], s.pos[i]), dj = len(r), over = BODY - dj;
@@ -804,6 +853,49 @@
   }
 
   // Advance the game by dt seconds. ctrl: index of the user's player (or -1). ctrlPath(u) -> position at fraction u.
+  // ---------------------------------------------------------------------------------------------
+  // Perception: the thrower decides from what they believe, the disc flies through what is real.
+  // Gaze turns (pivot after the catch, then toward the option being read). Central vision is sharp,
+  // peripheral vision blurs position and lags speed, behind is unseen: defenders there are dead-
+  // reckoned from when they were last seen; teammates behind call out (rough position, no speed).
+  // Errors drift (AR(1), 0.8 s) instead of jittering, so a misread persists for a moment.
+  // ---------------------------------------------------------------------------------------------
+  const PERC = { on: true, fovC: 0.52, fovP: 1.75, turn: 5.0, pivot: 3.0, sigC: 0.12, sigCr: 0.015, sigP: 0.35, sigPr: 0.05, sigCall: 1.0, velLag: 2.0, tauErr: 0.8, felt: 2.0 };
+  const setPerception = o => Object.assign(PERC, typeof o === 'object' ? o : { on: !!o });
+  const wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
+  function perceive(s, dt) {
+    if (!PERC.on || s.holder < 0 || s.setup) { s.belief = null; return; }
+    const h = s.holder, H = s.pos[h];
+    let b = s.belief;
+    if (!b || b.holder !== h || b.poss !== s.poss) {
+      const from = s.lastFrom && dist(s.lastFrom, H) > 0.5 ? Math.atan2(s.lastFrom[1] - H[1], s.lastFrom[0] - H[0]) : 0;
+      b = s.belief = { holder: h, poss: s.poss, gaze: from, look: null, pos: s.pos.map(p => p.slice()), vel: s.vel.map(v => v.slice()), err: s.pos.map(() => [0, 0]), vis: s.pos.map(() => 2), seen: s.pos.map(() => s.t) };
+    }
+    // gaze: pivot upfield first, then toward the receiver being read
+    const want = b.look != null && b.look !== h && s.stall >= LOOK ? Math.atan2(s.pos[b.look][1] - H[1], s.pos[b.look][0] - H[0]) : 0;
+    const dg = wrapA(want - b.gaze), rate = s.stall < LOOK ? PERC.pivot : PERC.turn;
+    b.gaze = wrapA(b.gaze + Math.sign(dg) * Math.min(Math.abs(dg), rate * dt));
+    const rho = Math.exp(-dt / PERC.tauErr), kick = Math.sqrt(1 - rho * rho);
+    for (let j = 0; j < 8; j++) {
+      if (j === h) { b.pos[j] = H.slice(); b.vel[j] = [0, 0]; b.vis[j] = 2; continue; }
+      const P = s.pos[j], r = dist(P, H), th = Math.abs(wrapA(Math.atan2(P[1] - H[1], P[0] - H[0]) - b.gaze));
+      const vis = j === h + 4 || r < PERC.felt ? 2 : th < PERC.fovC ? 2 : th < PERC.fovP ? 1 : 0;
+      b.vis[j] = vis;
+      const sig = vis === 2 ? PERC.sigC + PERC.sigCr * r : vis === 1 ? PERC.sigP + PERC.sigPr * r : PERC.sigCall;
+      const g = () => { const u = Math.max(1e-9, s.rand()), v = s.rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+      b.err[j] = [rho * b.err[j][0] + kick * sig * g(), rho * b.err[j][1] + kick * sig * g()];
+      if (vis === 2) { b.pos[j] = add(P, b.err[j]); b.vel[j] = s.vel[j].slice(); b.seen[j] = s.t; }
+      else if (vis === 1) { b.pos[j] = add(P, b.err[j]); b.vel[j] = add(b.vel[j], mul(sub(s.vel[j], b.vel[j]), Math.min(1, PERC.velLag * dt))); b.seen[j] = s.t; }
+      else if (j < 4) { b.pos[j] = add(P, b.err[j]); b.vel[j] = [0, 0]; }          // a teammate calling from behind
+      else { b.pos[j] = clampF(add(b.pos[j], mul(b.vel[j], dt)), 0.3); b.vel[j] = mul(b.vel[j], Math.exp(-dt / 1.5)); }   // unseen defender: where they were heading
+    }
+  }
+  // the state as the thrower sees it (only positions and speeds differ)
+  function believed(s) {
+    if (!s.belief || s.belief.holder !== s.holder) return s;
+    return Object.assign({}, s, { pos: s.belief.pos.map(p => p.slice()), vel: s.belief.vel.map(v => v.slice()), tgt: s.tgt.map(p => p.slice()) });
+  }
+
   function advance(s, dt, ctrl, ctrlPath) {
     let done = 0;
     const steps = Math.max(1, Math.round(dt / SUB));
@@ -811,7 +903,9 @@
       if (s.t >= s.nextDecision - 1e-6) { decide(s, ctrl); s.nextDecision = s.t + DECIDE; }
       targets(s, ctrl);
       physics(s, SUB, ctrl, ctrlPath ? ctrlPath(k / steps) : null);
+      perceive(s, SUB);
       s.t = Math.round((s.t + SUB) * 1000) / 1000;
+      if (s.flight && !s.flight.pickup) s.lastFrom = s.flight.A;
       resolve(s);
       if (s.pendingPick) applyPick(s);
       done++;
@@ -865,6 +959,6 @@
   }
 
   const setPatience = o => { Object.assign(PATIENCE, o); }, setLook = v => { LOOK = v; };
-  const api = { setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
+  const api = { setPerception, PERC, setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
   if (isNode) module.exports = api; else root.UltiGame = api;
 })(typeof window !== 'undefined' ? window : globalThis);
