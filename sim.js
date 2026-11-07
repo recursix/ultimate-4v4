@@ -8,8 +8,8 @@
   // Physical assumptions. Numbers are rec/club estimates, kept in one place so they can be tuned.
   const P = {
     vmax: 7.2,        // top running speed, m/s (measured ultimate players: 6.4 to 7.2 m/s)
-    tau: 0.85,        // acceleration time constant: v(t) = vmax(1 - e^(-t/tau)), 10 m in about 2.2 s
-    tauSprint: 0.55,  // all-out reaction (the live sandbox's explosive first steps; used for moving defenders)
+    tau: 0.85,        // acceleration time constant: v(t) = vmax(1 - e^(-t/tau)), 8.5 m/s^2 from a standstill (RESEARCH.md)
+    tauSprint: 0.85,  // all-out reaction: same propulsion limit as the sandbox running model (A0 = vmax/tau)
     reactD: 0.3,      // downfield defender reaction to the release, s
     reactMark: 0.05,  // the mark is already set and reaching
     arm: 1.0,         // horizontal reach of arms for a low disc, m

@@ -10,7 +10,7 @@
   const FIELD = { L: 30, W: 18, ez: 3, brick: 2 };
   const L = FIELD.L, W = FIELD.W, GOAL_X = L - FIELD.ez;
   const SUB = 0.05, DECIDE = 0.5, STALL = 8;
-  let LOOK = 1.2; const TAU = 0.85, TAU_BRAKE = 0.3, TAU_SPRINT = SIM.P.tauSprint;   // explosive first steps when sprinting
+  let LOOK = 1.2;
   const PIDS = ['O1', 'O2', 'O3', 'O4', 'D1', 'D2', 'D3', 'D4'];
   const LABELS = { O1: 'H1', O2: 'H2', O3: 'C1', O4: 'C2', D1: 'D1', D2: 'D2', D3: 'D3', D4: 'D4' };
   const PLAY = { field: FIELD, labels: LABELS, defense: 'person', stall: STALL };
@@ -49,7 +49,7 @@
   function create(setup, opts) {
     opts = opts || {};
     const s = {
-      t: 0, pos: PIDS.map(p => setup.pos[p].slice()), vel: PIDS.map(() => [0, 0]), tgt: PIDS.map(p => setup.pos[p].slice()),
+      t: 0, pos: PIDS.map(p => setup.pos[p].slice()), vel: PIDS.map(() => [0, 0]), acc: PIDS.map(() => [0, 0]), tgt: PIDS.map(p => setup.pos[p].slice()),
       vmax: PIDS.map(() => 6.9), holder: +setup.holder.slice(1) - 1, stall: setup.stall || 0,
       flight: null, done: null, nextDecision: 0, seed: opts.seed || 7, dice: opts.dice || 'expected',
       macro: PIDS.map(() => ({ kind: 'set', label: '', target: null, since: 0 })),
@@ -311,7 +311,7 @@
 
   // "Hold" = the best throw half a second from now: everyone keeps moving, the disc stays put.
   function holdRollout(s) {
-    const c = { t: s.t, pos: s.pos.map(p => p.slice()), vel: s.vel.map(v => v.slice()), tgt: s.tgt.map(p => p.slice()), vmax: s.vmax,
+    const c = { t: s.t, pos: s.pos.map(p => p.slice()), vel: s.vel.map(v => v.slice()), acc: (s.acc || s.pos.map(() => [0, 0])).map(a => a.slice()), tgt: s.tgt.map(p => p.slice()), vmax: s.vmax,
       holder: s.holder, stall: s.stall, flight: null, macro: s.macro, dstyle: s.dstyle, energy: s.energy.slice(), down: s.down.slice(), lay: s.lay.slice() };
     for (let k = 0; k < Math.round(DECIDE / SUB); k++) { targets(c, -1); physics(c, SUB, -1, null); c.t += SUB; c.stall += SUB; }
     return c;
@@ -532,7 +532,26 @@
     }
   }
 
+  // Running model (sandbox/anim-board/RESEARCH.md): propulsion fades with speed (8.5 m/s^2 from a standstill,
+  // tau = 0.85 s), braking stays strong down to a stop, and grip caps how fast velocity can rotate, so a
+  // sharp cut has to brake (plant) before it can go. The acceleration itself ramps over 0.06 s.
+  const MOVE = { A0: SIM.P.vmax / SIM.P.tauSprint, B0: 8.0, BS: 0.4, ALAT: 6.5, G: 9.0, TC: 0.12, JT: 0.06, BPLAN: 6.5, JOG: 0.7 };
+  const clampLen = (a, m) => { const l = len(a); return l > m ? mul(a, m / l) : a; };
+  function move(s, i, vdes, sprint, dt) {
+    const v = s.vel[i], sp = len(v), M = MOVE;
+    const ades = mul(sub(vdes, v), 1 / M.TC);
+    const h = sp > 0.05 ? mul(v, 1 / sp) : len(vdes) > 0.05 ? unit(vdes) : [1, 0], n = [-h[1], h[0]];
+    let al = ades[0] * h[0] + ades[1] * h[1], at = ades[0] * n[0] + ades[1] * n[1];
+    const push = M.A0 * (sprint ? 1 : M.JOG) * Math.max(0, 1 - sp / VTOP);
+    al = al > 0 ? Math.min(al, push) : Math.max(al, -M.B0 * (1 - M.BS * sp / VTOP));
+    at = Math.max(-M.ALAT, Math.min(M.ALAT, at));
+    const a = clampLen(add(mul(h, al), mul(n, at)), M.G);
+    s.acc[i] = add(s.acc[i], mul(sub(a, s.acc[i]), 1 - Math.exp(-dt / M.JT)));
+    const nv = add(v, mul(s.acc[i], dt));
+    s.vel[i] = nv[0] * v[0] + nv[1] * v[1] < 0 && len(vdes) < 0.05 ? [0, 0] : nv;   // braking to a stop never reverses
+  }
   function physics(s, dt, ctrl, ctrlTo) {
+    if (!s.acc) s.acc = s.pos.map(() => [0, 0]);
     for (let i = 0; i < 8; i++) {
       if (s.down[i] > 0) {   // on the ground after a layout: slide to a stop, then get up
         s.down[i] = Math.max(0, s.down[i] - dt); if (!s.down[i]) s.lay[i] = null;
@@ -541,21 +560,22 @@
       }
       if (i === ctrl && ctrlTo) {
         const v = mul(sub(ctrlTo, s.pos[i]), 1 / dt);
+        s.acc[i] = add(s.acc[i], mul(sub(clampLen(mul(sub(v, s.vel[i]), 1 / dt), MOVE.G), s.acc[i]), 0.25));   // for drawing only
         s.vel[i] = v; s.pos[i] = ctrlTo.slice(); energyStep(s, i, dt); continue;
       }
-      if (i === s.holder && !s.setup) { s.vel[i] = [0, 0]; energyStep(s, i, dt); continue; }
+      if (i === s.holder && !s.setup) { s.vel[i] = [0, 0]; s.acc[i] = [0, 0]; energyStep(s, i, dt); continue; }
       if (i === ctrl) { // controlled but standing still
-        s.vel[i] = mul(s.vel[i], Math.exp(-dt / TAU_BRAKE)); s.pos[i] = add(s.pos[i], mul(s.vel[i], dt)); energyStep(s, i, dt); continue;
+        move(s, i, [0, 0], true, dt); s.pos[i] = add(s.pos[i], mul(s.vel[i], dt)); energyStep(s, i, dt); continue;
       }
       const d = sub(s.tgt[i], s.pos[i]), dl = len(d), want = effort(s, i), sprint = want >= VTOP;
       const dir = steer(s, i, unit(d), dl);
       // cuts are run through at full speed (the cut ends on arrival and the clear brakes); a sprint to a
       // catch or a reaction slows only at the very end; everything else eases in over 2.5 m
       const thru = i < 4 && ['under', 'deep', 'in', 'up', 'dump-back', 'dump-up'].includes(s.macro[i].kind);
-      const vdes = mul(dir, Math.min(capOf(s, i), want) * (thru ? 1 : Math.min(1, dl / (sprint ? 1.2 : 2.5))));
-      const braking = len(vdes) < len(s.vel[i]) - 0.3 || vdes[0] * s.vel[i][0] + vdes[1] * s.vel[i][1] < 0;
-      const k = 1 - Math.exp(-dt / (braking ? TAU_BRAKE : sprint ? TAU_SPRINT : TAU));
-      s.vel[i] = add(s.vel[i], mul(sub(vdes, s.vel[i]), k));
+      // arriving: brake late and hard (the speed you can still kill in the distance left), not a long ease-in
+      const sp0 = len(s.vel[i]), room = Math.max(0, dl - 0.1 - 0.15 * sp0);
+      const vdes = mul(dir, Math.min(capOf(s, i), want, thru ? 99 : Math.sqrt(2 * (sprint ? MOVE.B0 : MOVE.BPLAN) * room)));
+      move(s, i, vdes, sprint, dt);
       s.pos[i] = [Math.max(-1, Math.min(L + 1, s.pos[i][0] + s.vel[i][0] * dt)), Math.max(-1, Math.min(W + 1, s.pos[i][1] + s.vel[i][1] * dt))];
       energyStep(s, i, dt);
     }
