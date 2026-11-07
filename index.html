@@ -64,8 +64,14 @@ button,input,select{font:inherit;color:inherit}
 .board{position:relative;border-radius:10px;overflow:hidden;background:var(--ez);user-select:none;-webkit-user-select:none}
 .board svg{display:block;width:100%;height:auto;touch-action:none}
 .clock{position:absolute;left:8px;top:6px;font-family:var(--f-mono);font-size:12px;color:var(--chalk);pointer-events:none;font-variant-numeric:tabular-nums}
-.banner{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--panel);color:var(--ink);border-radius:12px;padding:14px 18px;text-align:center;box-shadow:0 8px 30px rgb(0 0 0 / .35);display:flex;flex-direction:column;gap:8px;align-items:center}
-.banner b{font-family:var(--f-display);font-size:28px;line-height:1}
+.banner{position:absolute;left:50%;top:6px;transform:translateX(-50%);max-width:calc(100% - 12px);background:var(--panel);color:var(--ink);border-radius:10px;padding:6px 10px 6px 14px;box-shadow:0 4px 18px rgb(0 0 0 / .3);display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;justify-content:center;text-align:center}
+.banner b{font-family:var(--f-display);font-size:20px;line-height:1;text-transform:uppercase;letter-spacing:.03em}
+.banner b.goal{color:var(--off-2)} .banner b.blue{color:var(--def)} .banner b.setup{color:var(--muted)}
+.banner .hint{margin:0;font-size:13px}
+.banner .btn{padding:4px 10px;font-size:13px}
+.board.dead svg{filter:saturate(.45) brightness(.92);transition:filter .3s}
+@media (max-width:600px){ .board{display:flex;flex-direction:column} .board .banner{order:-1;position:static;transform:none;max-width:none;border-radius:0;box-shadow:none} .banner{padding:4px 8px;gap:2px 8px} .banner b{font-size:16px} .banner .hint{font-size:11.5px} .board.dead .clock{opacity:0} .board.dead::after{bottom:22px;font-size:11px} }
+.board.dead::after{content:"NOT LIVE";position:absolute;right:10px;bottom:30px;font-family:var(--f-display);font-weight:700;letter-spacing:.2em;font-size:13px;color:#fff;opacity:.7;pointer-events:none}
 .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .controls .grow{flex:1}
 .seg{display:inline-flex;gap:4px}
@@ -160,7 +166,7 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
       <button class="btn" id="tele" aria-pressed="false" title="Drag any player without time passing (or hold Shift)">Teleport</button>
       <div class="scrub"><label for="hist">Time</label><input type="range" id="hist" min="0" max="0" value="0"><span id="histt"></span></div>
     </div>
-    <p class="hint">Drag <b>any player</b>: time moves with them and everyone else reacts. Stop moving and time stops. A fast drag sprints and uses up the player's burst (the ring that appears around them); a slow drag (or <kbd>Alt</kbd>) jogs and refills it. Players lay out for discs just out of reach, about half come up with it, and they need a moment to get up. Click a player to see their options. <kbd>Shift</kbd>+drag (or Teleport) moves a player without time passing. <kbd>←</kbd> <kbd>→</kbd> step time by 0.25 s (<kbd>Shift</kbd> for 1 s), <kbd>Space</kbd> waits 0.5 s. <kbd>Shift</kbd>+click an attacker to give them the disc. Click any arrow to play it (it plays out at 2×): a purple line throws, a yellow arrow runs that option, a white arrow plays on until that player finishes their move. Play is continuous: after a turnover the other team picks up the disc and attacks the other way (Orange attacks right, Blue left), after a goal the scored-on team restarts from its endzone. <kbd>N</kbd> plays on when you are stepping by hand. Players have bodies: they can't run through each other and steer around traffic. Very short, fast passes are hard to read and get dropped more often (a 3 m flick about 30%), so the AI prefers a push or a floaty touch pass up close, which is slower and easier to get a hand on. A defender screened off their player calls a pick: play stops and they walk back (a disc caught by their player during the pick goes back to the thrower).</p>
+    <p class="hint">Drag <b>any player</b>: time moves with them and everyone else reacts. Stop moving and time stops. A fast drag sprints and uses up the player's burst (the ring that appears around them); a slow drag (or <kbd>Alt</kbd>) jogs and refills it. Players lay out for discs just out of reach, about half come up with it, and they need a moment to get up. Click a player to see their options. <kbd>Shift</kbd>+drag (or Teleport) moves a player without time passing. <kbd>←</kbd> <kbd>→</kbd> step time by 0.25 s (<kbd>Shift</kbd> for 1 s), <kbd>Space</kbd> waits 0.5 s. <kbd>Shift</kbd>+click an attacker to give them the disc. Click any arrow to play it (it plays out at 2×): a purple line throws, a yellow arrow runs that option, a white arrow plays on until that player finishes their move. Play is continuous: after a turnover the other team picks up the disc and attacks the other way (Orange attacks right, Blue left), after a goal everyone walks to a line-up for the next point (the field greys out: not live). Drag anyone to change the line-up and press Disc in, or it starts when everyone is set. <kbd>N</kbd> plays on when you are stepping by hand. Players have bodies: they can't run through each other and steer around traffic. Very short, fast passes are hard to read and get dropped more often (a 3 m flick about 30%), so the AI prefers a push or a floaty touch pass up close, which is slower and easier to get a hand on. A defender screened off their player calls a pick: play stops and they walk back (a disc caught by their player during the pick goes back to the thrower).</p>
   </main>
 
   <aside class="panel" id="panel">
@@ -279,6 +285,7 @@ function playOn(){
   face.push(...face.splice(0, 4));                       // indices swap teams; keep each person's facing
   if (focus >= 0) focus = (focus + 4) % 8;               // keep the same person selected
   pushHist(); render();
+  if (!autoOn && S.setup) animate(12, -1, null, true);   // walk to the line-up (click anywhere to stop and rearrange)
 }
 function autoLoop(ts){
   if (!autoOn) return;
@@ -287,6 +294,7 @@ function autoLoop(ts){
   const n = Math.min(6, Math.floor(autoAcc / 0.05 + 1e-9));   // game time moves in 0.05 s steps
   if (n > 0 && S && !S.done) { autoAcc -= n * 0.05; G.advance(S, n * 0.05, -1); pushHist(); render(); }
   if (S && S.done) {   // show the result for a moment, then the other team takes it
+    autoAcc = 0;   // don't bank time during the pause (it used to fast-forward afterwards)
     if (doneAt == null) { doneAt = ts; render(); }
     else if (ts - doneAt > 1400) { doneAt = null; playOn(); }
   } else doneAt = null;
@@ -379,7 +387,7 @@ function draw(){
   o += `<ellipse class="shadow" cx="${r2(D[0] + (h - 1) * .18)}" cy="${r2(D[1] + (h - 1) * .25)}" rx=".36" ry=".28"/><g class="disc" transform="translate(${f2(D)}) scale(${r2(sc)})"><circle class="d1" r=".4"/><circle class="d2" r=".24"/></g>`;
   $('#svg').innerHTML = o;
   const sc0 = s.score || [0, 0];
-  $('#clock').textContent = `Orange ${sc0[0]} : ${sc0[1]} Blue · t ${s.t.toFixed(1)} s · ` + (s.holder >= 0 ? `${s.flipped ? 'Blue' : 'Orange'} disc, stall ${Math.floor(s.stall)}` : s.flight && s.flight.pickup ? 'picking up the disc' : s.flight ? 'disc in the air' : '');
+  $('#clock').textContent = `Orange ${sc0[0]} : ${sc0[1]} Blue · t ${s.t.toFixed(1)} s · ` + (s.setup ? 'lining up' : s.holder >= 0 ? `${s.flipped ? 'Blue' : 'Orange'} disc, stall ${Math.floor(s.stall)}` : s.flight && s.flight.pickup ? 'picking up the disc' : s.flight ? 'disc in the air' : '');
 }
 function panel(){
   const s = S, v = s.evalNow ?? 0.5;
@@ -423,8 +431,16 @@ function panel(){
   $('#log').innerHTML = s.log.slice().reverse().map(l => `<li><span>${l.t.toFixed(1)}s</span>${esc(l.text)}</li>`).join('') || '<li class="hint">Nothing yet.</li>';
   // banner
   const b = $('#banner');
-  if (s.done) { b.hidden = false; b.innerHTML = `<b>${s.done.reason === 'goal' ? 'Goal!' : 'Turnover'}</b><span class="hint">${esc(s.done.text)}</span><span><button class="btn" data-act="back2">Back 2 s</button> <button class="btn primary" data-act="next">${s.done.reason === 'goal' ? 'Next point' : 'Play on'}</button> <button class="btn" data-act="again">New game</button></span>`; }
-  else b.hidden = true;
+  const team = s.flipped ? 'Blue' : 'Orange', other = s.flipped ? 'Orange' : 'Blue';
+  if (s.done) {
+    const goal = s.done.reason === 'goal', who = goal ? team : other, cls = (who === 'Orange') ? 'goal' : 'blue';
+    const txt = goal ? `${team} scores` : `Turnover: ${other}'s disc`;
+    b.hidden = false; b.innerHTML = `<b class="${cls}">${txt}</b><span class="hint">${esc(goal ? `Orange ${s.score[0]} : ${s.score[1]} Blue` : s.done.text.replace(/^Turnover: /, ''))}</span>` +
+      (autoOn ? '' : `<span><button class="btn" data-act="back2">Back 2 s</button> <button class="btn primary" data-act="next">${goal ? 'Next point' : 'Play on'}</button></span>`);
+  } else if (s.setup) {
+    b.hidden = false; b.innerHTML = `<b class="setup">Lining up</b><span class="hint">${team} receives · ${s.setup.hold ? 'arrange, then Disc in' : 'drag anyone to rearrange'}</span><span><button class="btn primary" data-act="discin">Disc in</button></span>`;
+  } else b.hidden = true;
+  $('#board').classList.toggle('dead', !!(s.done || s.setup));
   const hs = $('#hist'); hs.max = Math.max(0, hist.length - 1); hs.value = hi; $('#histt').textContent = `${S.t.toFixed(1)} s`;
 }
 function computeOpts(){
@@ -448,7 +464,7 @@ $('#svg').addEventListener('pointerdown', e => {
     const i = +g.dataset.i;
     focus = i;
     if (teleport(e)) drag = { kind: 'tele', i, moved: false, shift: e.shiftKey };
-    else if (i !== S.holder && !S.done && !autoOn) { drag = { kind: 'run', i, moved: false }; ctrl = i; }
+    else if ((i !== S.holder || S.setup) && !S.done && !autoOn) { drag = { kind: 'run', i, moved: false }; ctrl = i; if (S.setup) S.setup.hold = true; }
     else { render(); return; }
     e.preventDefault(); $('#svg').setPointerCapture(e.pointerId); render();
     return;
@@ -470,7 +486,7 @@ $('#svg').addEventListener('pointermove', e => {
   drag.moved = true;
   const Q = [from[0] + (P[0] - from[0]) * n * 0.05 / T, from[1] + (P[1] - from[1]) * n * 0.05 / T];
   advance(n * 0.05, u => [from[0] + (Q[0] - from[0]) * u, from[1] + (Q[1] - from[1]) * u]);
-  if (S.done || drag.i === S.holder) { drag = null; ctrl = -1; }   // caught it: now they hold the disc
+  if (S.done || (drag.i === S.holder && !S.setup)) { drag = null; ctrl = -1; }   // caught it: now they hold the disc
   render();
 });
 function endDrag(){
@@ -479,15 +495,15 @@ function endDrag(){
     if (!drag.moved && drag.shift && drag.i < 4 && drag.i !== S.holder) { S.holder = drag.i; S.flight = null; S.stall = 0; S.done = null; S.macro[drag.i] = { kind: 'hold', label: 'holds the disc', since: S.t }; }
     if (drag.moved) G.placed(S, drag.i);
     G.think(S, -1); hist.push(G.snapshot(S)); hi = hist.length - 1;
-  } else if (drag.kind === 'run' && drag.moved && S.holder !== drag.i && !S.done) G.placed(S, drag.i);
+  } else if (drag.kind === 'run' && drag.moved && (S.holder !== drag.i || S.setup) && !S.done) G.placed(S, drag.i);
   drag = null; ctrl = -1; render();
 }
 $('#svg').addEventListener('pointerup', endDrag); $('#svg').addEventListener('pointercancel', endDrag);
 // Clicking an option plays it out on screen at 2x: dur game seconds, the player following path(u) if given.
 const ANIM_SPEED = 2;
 let anim = null;
-function animate(dur, who, path){
-  anim = { dur, left: dur, who, path, last: null };
+function animate(dur, who, path, setup){
+  anim = { dur, left: dur, who, path, last: null, setup };
   requestAnimationFrame(animStep);
 }
 function animStep(ts){
@@ -501,7 +517,7 @@ function animStep(ts){
     G.advance(S, n * 0.05, a.path ? a.who : -1, a.path ? (u => a.path(u0 + (u1 - u0) * u)) : null);
     pushHist(); render();
   }
-  if (S.done || a.left < 0.025 || (a.who >= 0 && a.who === S.holder)) { anim = null; render(); return; }
+  if (S.done || a.left < 0.025 || (a.who >= 0 && a.who === S.holder) || (a.setup && !S.setup)) { anim = null; render(); return; }
   requestAnimationFrame(animStep);
 }
 function runMacro(i){
@@ -528,6 +544,7 @@ document.addEventListener('click', e => {
   const a = e.target.closest('[data-act]'); if (!a) return;
   if (a.dataset.act === 'again') newGame();
   if (a.dataset.act === 'next') playOn();
+  if (a.dataset.act === 'discin' && S && S.setup) { G.discIn(S); pushHist(); render(); }
   if (a.dataset.act === 'back2') { hi = Math.max(0, hi - 8); S = G.restore(hist[hi]); render(); }
 });
 document.addEventListener('mouseover', e => {
