@@ -388,6 +388,8 @@
   // ---------------------------------------------------------------------------------------------
   // Decisions every 0.5 s
   // ---------------------------------------------------------------------------------------------
+  let sideHook = null;
+  const setSideHook = f => { sideHook = f; };
   function decide(s, ctrl) {
     if (s.setup) return;   // nobody decides anything until the disc is in
     const pick = ranked => { // minimal randomness: choose among options within 0.3 points of the best
@@ -396,6 +398,7 @@
       return close[Math.floor(s.rand() * close.length)];
     };
     if (s.holder >= 0) {
+      if (sideHook) sideHook(s, 'off');   // head-to-head tests: each team can think with its own net
       // offense movers
       let cutting = -1;
       for (let i = 0; i < 4; i++) if (i !== s.holder && ['under', 'deep', 'in', 'up'].includes(s.macro[i].kind)) cutting = i;
@@ -425,6 +428,7 @@
         } else if (m.kind !== 'set') s.macro[i] = { kind: 'set', label: 'holds the stack spot', target: null, since: s.t };
       }
       // defense styles
+      if (sideHook) sideHook(s, 'def');
       for (let i = 4; i < 8; i++) {
         if (i === ctrl) continue;
         if (userHeld(s, i)) continue;
@@ -432,6 +436,7 @@
         if (best) { s.dstyle[i] = best.kind; s.macro[i] = { kind: best.kind, label: best.label, target: null, since: s.t }; }
       }
       // thrower
+      if (sideHook) sideHook(s, 'off');
       if (s.holder !== ctrl && s.stall >= LOOK && !(s.down[s.holder] > 0)) {
         const res = analyseThrower(s, ctrl);
         s.lastSearch = res;
@@ -860,6 +865,6 @@
   }
 
   const setPatience = o => { Object.assign(PATIENCE, o); }, setLook = v => { LOOK = v; };
-  const api = { setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
+  const api = { setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
   if (isNode) module.exports = api; else root.UltiGame = api;
 })(typeof window !== 'undefined' ? window : globalThis);
