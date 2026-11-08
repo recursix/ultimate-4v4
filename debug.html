@@ -1,0 +1,861 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}img{max-width:100%}</style>
+</head><body>
+<title>Ultimate 4v4 Sandbox</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: field with an engine eval bar on its left, controls under it, a coaching panel on the right. */
+:root{
+  --bg:#e8ede7; --panel:#f7f9f5; --ink:#15201a; --muted:#56655c; --line:#cdd7cd; --soft:#dde5dc;
+  --accent:#0c6a56; --accent-ink:#ffffff;
+  --turf:#3b784a; --turf-2:#367045; --ez:#2e623e; --chalk:#f2f5ee;
+  --off:#ef9827; --off-2:#c06f0e; --off-ink:#2a1700; --def:#3854cf; --def-2:#25389a; --def-ink:#ffffff;
+  --disc:#ffffff; --disc-edge:#141414; --eng:#b44fd6; --you:#ffe14d;
+  --good:#1f9d55; --risk:#d99a06; --bad:#d6452b;
+  --f-display:"Saira Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1310; --panel:#141c17; --ink:#e2e9e3; --muted:#92a298; --line:#27342c; --soft:#1b251f;
+    --accent:#4cc39f; --accent-ink:#05251c;
+    --turf:#2a5836; --turf-2:#275232; --ez:#20482b; --chalk:#e4ebe1;
+    --off:#f4a640; --off-2:#c27618; --off-ink:#2a1700; --def:#7590ff; --def-2:#4a5fc4; --def-ink:#0a0f2e;
+    --disc:#ffffff; --disc-edge:#0b0b0b; --eng:#e08cff; --you:#ffe14d;
+    --good:#4fd18b; --risk:#f2c14e; --bad:#ff7a5c;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1310; --panel:#141c17; --ink:#e2e9e3; --muted:#92a298; --line:#27342c; --soft:#1b251f;
+  --accent:#4cc39f; --accent-ink:#05251c;
+  --turf:#2a5836; --turf-2:#275232; --ez:#20482b; --chalk:#e4ebe1;
+  --off:#f4a640; --off-2:#c27618; --off-ink:#2a1700; --def:#7590ff; --def-2:#4a5fc4; --def-ink:#0a0f2e;
+  --disc:#ffffff; --disc-edge:#0b0b0b; --eng:#e08cff; --you:#ffe14d;
+  --good:#4fd18b; --risk:#f2c14e; --bad:#ff7a5c;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding-block:14px 10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line)}
+.top h1{font-family:var(--f-display);font-weight:700;font-size:26px;text-transform:uppercase;margin:0 auto 0 0;line-height:1}
+.top h1 span{font-family:var(--f-mono);font-size:12px;font-weight:400;color:var(--muted);text-transform:none;margin-left:8px}
+.fld{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted)}
+.fld select{font-weight:500;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:5px 8px;font-size:14px;max-width:260px}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px;align-items:start;padding-block:16px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.main{display:flex;flex-direction:column;gap:10px;min-width:0}
+.boardrow{display:grid;grid-template-columns:34px minmax(0,1fr);gap:8px}
+.scorebar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px}
+.scorebar .sc{display:flex;align-items:baseline;gap:8px;font-family:var(--f-display);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.scorebar .sc b{font-size:34px;line-height:1;min-width:1ch;text-align:center}
+.scorebar .sc span{font-size:15px}
+.scorebar .o b,.scorebar .o span{color:var(--off-2)} .scorebar .d b,.scorebar .d span{color:var(--def)}
+.scorebar .to{font-size:12px;color:var(--muted);font-family:var(--f-display);letter-spacing:.12em;text-transform:uppercase}
+.scorebar .pts{display:flex;flex-wrap:wrap;gap:4px;margin-left:auto}
+.scorebar .pt{font-size:12px;border-radius:6px;padding:2px 7px;border:1px solid var(--line);background:var(--panel);white-space:nowrap}
+.scorebar .pt.o{border-color:var(--off)} .scorebar .pt.d{border-color:var(--def)}
+.scorebar .pt i{font-style:normal;font-family:var(--f-display);font-weight:700;margin-right:4px}
+.evalbar{position:relative;border-radius:8px;overflow:hidden;background:var(--def);border:1px solid var(--line)}
+.evalbar .fill{position:absolute;left:0;right:0;bottom:0;background:var(--off);transition:height .25s}
+.evalbar .num{position:absolute;left:0;right:0;text-align:center;font-family:var(--f-display);font-weight:700;font-size:14px;color:var(--off-ink);bottom:4px}
+.board{position:relative;border-radius:10px;overflow:hidden;background:var(--ez);user-select:none;-webkit-user-select:none}
+.board svg{display:block;width:100%;height:auto;touch-action:none}
+.clock{position:absolute;left:8px;top:6px;font-family:var(--f-mono);font-size:12px;color:var(--chalk);pointer-events:none;font-variant-numeric:tabular-nums}
+.banner{position:absolute;left:50%;top:8.4%;transform:translate(-50%,-50%);max-width:calc(100% - 12px);background:var(--panel);color:var(--ink);border-radius:10px;padding:6px 10px 6px 14px;box-shadow:0 4px 18px rgb(0 0 0 / .3);display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;justify-content:center;text-align:center}
+.banner b{font-family:var(--f-display);font-size:20px;line-height:1;text-transform:uppercase;letter-spacing:.03em}
+.banner b.goal{color:var(--off-2)} .banner b.blue{color:var(--def)} .banner b.setup{color:var(--muted)}
+.banner .hint{margin:0;font-size:13px}
+.banner .btn{padding:4px 10px;font-size:13px}
+.board.dead svg{filter:saturate(.45) brightness(.92);transition:filter .3s}
+@media (max-width:600px){ .banner{padding:3px 8px;gap:0 8px} .banner .btn{padding:2px 8px;font-size:12px} .banner b{font-size:16px} .banner .hint{font-size:11.5px} .board.dead .clock{opacity:0} .board.dead::after{bottom:22px;font-size:11px} }
+.board.dead::after{content:"NOT LIVE";position:absolute;right:10px;bottom:30px;font-family:var(--f-display);font-weight:700;letter-spacing:.2em;font-size:13px;color:#fff;opacity:.7;pointer-events:none}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+/* two builds: the public page (html.simple) hides the debug tools; the full page hides the simple guide */
+html.simple .dbg{display:none!important}
+html:not(.simple) .smp{display:none!important}
+.howto{display:grid;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.howto h3{margin:0;font-family:var(--f-display);font-size:18px;letter-spacing:.02em;text-transform:uppercase}
+.howto ol{margin:0;padding-left:20px;display:grid;gap:6px;font-size:14.5px;line-height:1.45;max-width:72ch}
+.howto details{font-size:13px;color:var(--muted)}
+.howto summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.howto details .hint{margin-top:8px}
+html.simple #auto{min-width:96px;justify-content:center;font-size:15px}
+.controls .grow{flex:1}
+.seg{display:inline-flex;gap:4px}
+.scrub{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);min-width:220px;flex:1}
+.scrub input{flex:1}
+.hint{font-size:13px;color:var(--muted);margin:0}
+kbd{font-family:var(--f-mono);font-size:11.5px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px;background:var(--panel)}
+/* field */
+.turf{fill:var(--turf)} .mow{fill:var(--turf-2)} .ezr{fill:var(--ez)}
+.chalk{stroke:var(--chalk);stroke-width:.1;fill:none}
+.eztext{fill:var(--chalk);opacity:.35;font-family:var(--f-display);font-weight:700;letter-spacing:.3px}
+.tick{fill:var(--chalk);opacity:.75;font-family:var(--f-mono);font-size:.55px}
+.dir{fill:var(--chalk);opacity:.8;font-family:var(--f-display);font-weight:600;font-size:.7px;letter-spacing:.12px}
+.pl text{font-family:var(--f-display);font-weight:700;font-size:.56px;text-anchor:middle;dominant-baseline:central;pointer-events:none}
+/* players: top-down figure (shoulders + head), turned toward where they run; defenders guard with arms out */
+.pl .sh{stroke-width:.06} .pl .hd{stroke-width:.06} .pl .arm{fill:none;stroke-width:.2;stroke-linecap:round}
+.pl.O .sh{fill:var(--off-2);stroke:var(--off-ink)} .pl.O .hd{fill:var(--off);stroke:var(--off-ink)} .pl.O .arm{stroke:var(--off-2)} .pl.O text{fill:var(--off-ink)}
+.pl.D .sh{fill:var(--def-2);stroke:var(--def-ink)} .pl.D .hd{fill:var(--def);stroke:var(--def-ink)} .pl.D .arm{stroke:var(--def-2)} .pl.D text{fill:var(--def-ink)}
+.pl{cursor:grab}
+.vcone{fill:var(--ink);opacity:.05;pointer-events:none} .vcone.c{opacity:.07}
+.ghost{pointer-events:none} .ghost circle{fill:none;stroke-width:.13;stroke-dasharray:.32 .24} .ghost line{stroke-width:.08;stroke-dasharray:.14 .2}
+.ghost.O circle,.ghost.O line{stroke:var(--off-ink)} .ghost.D circle,.ghost.D line{stroke:var(--def-ink)} .ghost text{font-size:.95px;font-weight:700;text-anchor:middle;dominant-baseline:central}
+.ghost.O text{fill:var(--off-ink)} .ghost.D text{fill:var(--def-ink)}
+.pl .ft{stroke-width:.06} .pl.O .ft{fill:var(--off-2);stroke:var(--off-ink)} .pl.D .ft{fill:var(--def-2);stroke:var(--def-ink)} .pl .shadow{fill:#000;opacity:.18}
+.pl circle.you-ring{fill:none;stroke:var(--you);stroke-width:.2}
+.pl circle.you-ring.live{stroke-width:.32}
+.pickflash{fill:var(--you);font-family:var(--f-display);font-weight:700;font-size:.9px;text-anchor:middle;paint-order:stroke;stroke:#000;stroke-width:.18px;letter-spacing:.05px}
+.you-tag{fill:var(--you);font-family:var(--f-display);font-weight:700;font-size:.5px;text-anchor:middle}
+.mlabel{fill:var(--chalk);font-family:var(--f-body);font-weight:600;font-size:.46px;paint-order:stroke;stroke:var(--ez);stroke-width:.14px}
+.marrow{fill:none;stroke:var(--chalk);stroke-width:.07;stroke-dasharray:.25 .18;opacity:.85}
+.engl{fill:none;stroke:var(--eng);stroke-width:.14;stroke-linecap:round}
+.engl.alt{stroke-dasharray:.35 .2;opacity:.55}
+.intent{fill:none;stroke:var(--eng);stroke-width:.18;stroke-dasharray:.25 .25;animation:intent .6s linear infinite}
+@keyframes intent{to{stroke-dashoffset:-.5}}
+@media (prefers-reduced-motion: reduce){.intent{animation:none}}
+.engn{fill:#fff;font-family:var(--f-display);font-weight:600;font-size:.62px;letter-spacing:.01em;dominant-baseline:central;paint-order:stroke;stroke:rgba(16,24,18,.72);stroke-width:.16px;stroke-linejoin:round;cursor:pointer}
+.engb circle{fill:var(--eng)} .engb text{fill:#fff;font-family:var(--f-display);font-weight:700;font-size:.55px;text-anchor:middle;dominant-baseline:central}
+.opt{fill:none;stroke:var(--you);stroke-width:.12;stroke-linecap:round}
+.opt.alt{stroke-dasharray:.3 .2;opacity:.6}
+.optdot{fill:var(--you);opacity:.35;stroke:var(--you);stroke-width:.06}
+.optlbl{fill:var(--you);font-family:var(--f-display);font-weight:700;font-size:.55px;paint-order:stroke;stroke:var(--ez);stroke-width:.14px}
+.ah-E{fill:var(--eng)} .ah-Y{fill:var(--you)} .ah-C{fill:var(--chalk)}
+.disc .d1{fill:var(--disc);stroke:var(--disc-edge);stroke-width:.07} .disc .d2{fill:none;stroke:var(--disc-edge);stroke-width:.04;opacity:.5}
+.disc.flip .d1{fill:#d9d9d4} .disc.flip .d2{fill:#bdbdb6;opacity:.9}
+.shadow{fill:#000;opacity:.25}
+.hit{fill:none;stroke:transparent;stroke-width:1.1;pointer-events:stroke;cursor:pointer}
+.hitdot{fill:transparent;cursor:pointer}
+.marrow.hl{opacity:1;stroke-width:.12}
+.en-track{fill:none;stroke:#000;stroke-opacity:.2;stroke-width:.12}
+.en-arc{fill:none;stroke-width:.12;stroke-linecap:round;transform:rotate(-90deg)}
+.en-hi{stroke:var(--good)} .en-mid{stroke:var(--risk)} .en-lo{stroke:var(--bad)}
+.pl.down{opacity:.85}
+.who .en{font-family:var(--f-mono);font-size:11.5px;color:var(--muted);margin-left:6px}
+.flightpath{fill:none;stroke:var(--disc);stroke-width:.07;stroke-dasharray:.2 .2;opacity:.6}
+/* panel */
+.panel{display:flex;flex-direction:column;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
+.panel h4{font-family:var(--f-display);font-weight:600;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+.evalnow{display:flex;align-items:baseline;gap:10px}
+.evalnow b{font-family:var(--f-display);font-size:38px;line-height:1;color:var(--eng)}
+.spark{width:100%;height:46px;display:block}
+.spark path{fill:none;stroke:var(--eng);stroke-width:1.5}
+.spark .base{stroke:var(--line);stroke-width:1}
+.rows{display:flex;flex-direction:column;gap:6px}
+.row{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;align-items:center;text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:9px;padding:7px 10px;width:100%}
+button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
+.row .rk{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-family:var(--f-display);font-weight:700;background:var(--soft);grid-row:span 2}
+.row.best .rk{background:var(--you);color:#2a2400}
+.row .q{font-family:var(--f-display);font-weight:700;font-size:19px;grid-row:span 2}
+.row small{color:var(--muted);font-size:12px}
+.chip{font-size:11px;font-weight:700;border-radius:999px;padding:0 7px;background:color-mix(in srgb,var(--good) 28%,transparent);margin-left:4px}
+.who{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;font-size:13.5px}
+.who li{display:grid;grid-template-columns:34px 1fr;gap:6px}
+.who b{font-family:var(--f-display)}
+.log{list-style:none;margin:0;padding:0;font-size:13px;display:flex;flex-direction:column;gap:3px;max-height:160px;overflow:auto}
+.log span{font-family:var(--f-mono);font-size:11.5px;color:var(--muted);margin-right:6px}
+@media (max-width:1050px){ .app{grid-template-columns:minmax(0,1fr)} }
+@media (max-width:600px){ .top h1{font-size:21px} .boardrow{grid-template-columns:22px minmax(0,1fr)} }
+</style>
+
+<header class="top">
+  <h1>Ultimate 4v4 <span class="smp">play</span><span class="dbg">Sandbox</span><span class="dbg">engine v0</span></h1>
+  <label class="fld dbg" for="scen">Start<select id="scen"></select></label>
+  <label class="fld" for="variant" title="Which AI plays"><span class="dbg">AI</span><span class="smp">AI style</span><select id="variant"><option value="classic">Classic</option></select></label>
+  <label class="fld dbg" for="dice">Throws<select id="dice"><option value="expected">Likely outcome</option><option value="random">Roll the dice</option></select></label>
+  <button class="btn" id="reset"><span class="dbg">Reset</span><span class="smp">New game</span></button>
+</header>
+
+<div class="app">
+  <main class="main">
+    <div class="scorebar" id="scorebar"></div>
+    <div class="boardrow">
+      <div class="evalbar" id="evalbar" title="Chance the offense scores this possession"><div class="fill" id="evalfill"></div><div class="num" id="evalnum"></div></div>
+      <div class="board" id="board">
+        <svg id="svg" xmlns="http://www.w3.org/2000/svg" viewBox="-1.5 -1.8 33 21.5" role="img" aria-label="Field"></svg>
+        <div class="clock" id="clock"></div>
+        <div class="banner" id="banner" hidden></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn dbg" id="wait" title="Let 0.5 s pass while you stand still (Space)">Wait 0.5 s</button>
+      <button class="btn" id="auto" aria-pressed="false" title="Let the engine play every player (P)">Let it play</button>
+      <label class="fld" for="speed">Speed<select id="speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
+      <span class="seg dbg"><button class="btn" id="stepb" title="Back 0.25 s (←, Shift+← for 1 s)" aria-label="Step back">◀</button><button class="btn" id="stepf" title="Forward 0.25 s (→, Shift+→ for 1 s)" aria-label="Step forward">▶</button></span>
+ <button class="btn dbg" id="tele" aria-pressed="false" title="Drag any player without time passing (or hold Shift)">Teleport</button>
+      <button class="btn dbg" id="vision" aria-pressed="false" title="Show where the thrower thinks players are when they are wrong (V)">Vision</button>
+      <div class="scrub dbg"><label for="hist">Time</label><input type="range" id="hist" min="0" max="0" value="0"><span id="histt"></span></div>
+    </div>
+    <section class="howto smp" aria-labelledby="howto-h">
+      <h3 id="howto-h">How to play</h3>
+      <ol>
+        <li>Press <b>Play</b>. The AI plays both teams: Orange attacks right, Blue left.</li>
+        <li>Click a player, then <b>Play as</b> them (or click them again). The AI keeps playing everyone else.</li>
+        <li>Click or drag on the field to run there. Get open and your teammates look for you.</li>
+        <li>With the disc, click a purple throw (or any spot) and it goes as soon as it's open.</li>
+      </ol>
+      <details><summary>More about the simulation</summary><div id="more"></div><p class="hint">The full version with step-by-step tools: <a href="debug.html">debug mode</a>.</p></details>
+    </section>
+    <p class="hint dbg" id="hint1"><b>Live play:</b> press Let it play, click a player, then Play as them (or click them again): the AI plays everyone else. Click or drag on the field to run there (Alt to jog). As the handler, click a purple throw and it goes as soon as that window is open (or they hold if it closes), or click any spot: the nearest teammate goes there and you throw when they're open. Left idle (3 s on your spot, or stall 5 as the handler) your player goes on autopilot until your next order. Esc, or pausing, hands your player back to the AI.</p>
+    <p class="hint dbg" id="hint2">Drag <b>any player</b>: time moves with them and everyone else reacts. Stop moving and time stops. A fast drag sprints and uses up the player's burst: their head darkens as it runs out, and over a long point or game their colours fade as their reserve drains, and they get slower. A slow drag (or <kbd>Alt</kbd>) jogs and refills the burst. Players lay out for discs just out of reach, about half come up with it, and they need a moment to get up. Click a player to see their options. <kbd>Shift</kbd>+drag (or Teleport) moves a player without time passing. <kbd>←</kbd> <kbd>→</kbd> step time by 0.25 s (<kbd>Shift</kbd> for 1 s), <kbd>Space</kbd> waits 0.5 s. <kbd>Shift</kbd>+click an attacker to give them the disc. Click any arrow to play it (it plays out at 2×): a purple line throws, a yellow arrow runs that option, a white arrow plays on until that player finishes their move. Play is continuous: after a turnover the other team picks up the disc and attacks the other way (Orange attacks right, Blue left), after a goal the disc stays where it was caught and the other team brings it in from there: everyone walks to a line-up (the field greys out: not live), then the handler picks up the disc and presents it. Drag anyone to change the line-up and press Disc in. <kbd>N</kbd> plays on when you are stepping by hand. Players have bodies: they can't run through each other and steer around traffic. Very short, fast passes are hard to read and get dropped more often (a 3 m flick about 30%), so the AI prefers a push or a floaty touch pass up close, which is slower and easier to get a hand on. Discs fly with lift and drag: they leave the hand fast and slow down as they glide, and a nose-up disc floats and settles at the end. A laser is thrown hard and flat, so it gets there before defenders can react but arrives fast and is harder to hold; a touch pass or a floaty huck hangs and drops softly, easy to catch, but defenders catch up; a hammer or scoober flies upside down, doesn't glide and dives at the end. Throwers also pick the arc: lower and harder, or higher and softer, whichever beats the defenders in the way. Games go to 7; a defender who intercepts in the endzone the offense attacks scores a Callahan, and the team that threw it restarts from its own goal line. Throwers are patient early in the count and take riskier throws as the stall climbs. A disc that passes inside a defender's reach is usually blocked, so the AI curves around them or goes over the top; the disc is drawn tilted (a banked around throw is an oval, a hammer flies upside down and nearly on edge, and is harder to catch). Throwers only know what they see: sharp in the middle of their view, blurry at the edges, nothing behind. A dashed ring marks where they think a player is when that's wrong; a <b>?</b> is a defender behind them they haven't seen since (press <kbd>V</kbd> or Vision to hide it). Only one defender may be within 3 m of the thrower (no double team), and a second defender right next to the thrower is set and reaching like a mark. A defender screened off their player calls a pick: play stops, they walk back, and the disc is checked in at the stall reached plus one (a disc caught by their player during the pick goes back to the thrower).</p>
+  </main>
+
+  <aside class="panel" id="panel">
+    <div><h4>Scoring chance</h4><div class="evalnow"><b id="evbig">–</b><span class="hint" id="evtxt">Loading the engine…</span></div><svg class="spark" id="spark" viewBox="0 0 300 46" preserveAspectRatio="none"></svg></div>
+    <div><h4 id="youh">Options</h4><div class="rows" id="yours"></div></div>
+    <div class="dbg"><h4>What everyone is doing</h4><ul class="who" id="who"></ul></div>
+    <div><h4>Play by play</h4><ul class="log" id="log"></ul></div>
+    <p class="hint dbg">Engine v0: a value network trained on 150,000 simulated rec possessions, plus a one-throw search. The AI players avoid low-percentage and unusual throws on purpose, to stay close to how rec teams play. Defenders keep their momentum, so a throw to a player with a defender on their hip is risky. A defender you place stays parked until the next throw. No wind, right-handed throwers, force flick.</p>
+  </aside>
+</div>
+
+<script src="sim.js?v=b5f471e7"></script>
+<script src="engine.js?v=a6d92315"></script>
+<script src="game.js?v=5ac47c80"></script>
+<script>
+(() => {
+const G = window.UltiGame, SIM = window.UltiSim, ENG = window.UltiEngine;
+const { FIELD, PIDS, LABELS } = G;
+const L = FIELD.L, W = FIELD.W, EZ = FIELD.ez;
+// Dragging moves time at the player's own speed: a sprint while they have burst left, a jog if you
+// drag slowly (or hold Alt). Jogging refills the burst bucket.
+const JOG_PTR = 5;               // pointer speed (field metres per real second) below which a drag is a jog
+const dragSpeed = i => drag && drag.jog ? G.VJOG : G.capOf(S, i);
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const r2 = v => Math.round(v * 100) / 100, f2 = p => `${r2(p[0])} ${r2(p[1])}`;
+const pct = p => Math.round(p * 100) + '%';
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+// The game always runs with the offense attacking +x. When Blue has the disc the game frame is mirrored,
+// so the screen maps through X() (its own inverse). Orange always attacks right, Blue left.
+const X = p => S && S.flipped ? [L - p[0], W - p[1]] : p;
+const XF = p => f2(X(p));
+const teamOf = i => ((i < 4) !== !!(S && S.flipped)) ? 'O' : 'D';   // colour class: O = Orange, D = Blue
+
+const face = [];                 // last facing angle per player, so standing players don't spin
+// Top-down player figure in local coordinates facing +x: shoulders across, head slightly forward.
+// Defenders hold their arms out in a guarding stance; on the ground (layout) the body stretches along the dive.
+
+/* ---------- player animation: "A+B bouncy" from the motion board (sandbox/anim-board) ----------
+   Squash and stretch with speed and braking, lean into acceleration, alternating feet with a pinned
+   plant foot, pumping arms, shoulders follow intent. Drawn relative to the player's origin. */
+const PlayerAnim = (() => {
+const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+const mul = (a, k) => [a[0] * k, a[1] * k];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1];
+const len = a => Math.hypot(a[0], a[1]);
+const unit = a => { const l = len(a); return l > 1e-9 ? [a[0] / l, a[1] / l] : [0, 0]; };
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const clampLen = (a, m) => { const l = len(a); return l > m ? mul(a, m / l) : a; };
+const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+const r3 = x => Math.round(x * 1000) / 1000;
+const DEG = 180 / Math.PI;
+
+// kinematics in the runner's frame: along-track push/brake and signed lateral acceleration
+function kin(vel, acc) {
+  const sp = len(vel), h = sp > 1e-3 ? [vel[0] / sp, vel[1] / sp] : [1, 0], n = [-h[1], h[0]];
+  const along = dot(acc, h), lat = dot(acc, n);
+  return { sp, h, n, along, lat, brake: Math.max(0, -along), push: Math.max(0, along), load: Math.hypot(Math.max(0, -along), lat) };
+}
+// gait: integrates a stride phase whose cadence follows speed, and emits foot strikes.
+// A hard brake or cut (load > 4.5 m/s^2, re-armed below 2.5) forces an immediate PLANT strike on the outside foot.
+function gait(mem, pos, vel, acc, t) {
+  if (mem.t == null || t < mem.t - 1e-6) { mem.t = t; mem.phase = 0; mem.side = 1; mem.strikes = []; mem.last = -9; mem.hot = false; }
+  const dt = Math.min(0.1, t - mem.t); mem.t = t;
+  const k = kin(vel, acc);
+  const cad = k.sp < 0.25 ? 0 : 1.6 + 0.42 * k.sp;            // steps per second: ~3.1 jogging, ~4.6 sprinting
+  mem.phase += cad * dt;
+  let strike = false, plant = false;
+  if (mem.phase >= 1) { mem.phase %= 1; strike = true; }
+  if (k.load > 4.5 && !mem.hot && k.sp > 1.0 && t - mem.last > 0.12) { strike = plant = true; mem.phase = 0; mem.hot = true; mem.pDir = unit(acc); }
+  // one plant per braking/cutting episode; re-armed when the push eases off or swings the other way (jab then go)
+  if (k.load < 2.5 || (mem.hot && dot(unit(acc), mem.pDir) < -0.2)) mem.hot = false;
+  if (strike) {
+    mem.side = plant && Math.abs(k.lat) > 1.5 ? -Math.sign(k.lat) : -mem.side;   // plant on the outside foot
+    const ang = Math.atan2(k.h[1], k.h[0]);
+    const p = add(add(pos, mul(k.n, mem.side * 0.24)), mul(k.h, plant ? 0.35 : 0.08));
+    mem.strikes.push({ p, side: mem.side, ang, plant, t, load: k.load, h: k.h });
+    mem.last = t;
+  }
+  mem.strikes = mem.strikes.filter(s => t - s.t < 2.2).slice(-16);
+  return { k, phase: mem.phase, side: mem.side, strikes: mem.strikes };
+}
+const f = x => (Math.round(x * 1000) / 1000).toString();
+const blendAngle = (a, b, w) => a + wrap(b - a) * w;
+
+function makeCombo(o) {
+  return function (pos, vel, acc, facing, team, t, mem) {
+    const g = gait(mem, pos, vel, acc, t), k = g.k;
+    // A: squash and stretch (smoothed so a single frame never pops), plus a little bob on each step
+    const want = clamp(1 + o.sq * (0.045 * k.sp + 0.035 * k.push - 0.06 * k.brake - 0.02 * Math.abs(k.lat)), o.sqLo, o.sqHi);
+    mem.st = mem.st == null ? want : mem.st + (want - mem.st) * 0.35;
+    const bob = 1 + o.bob * Math.abs(Math.sin(Math.PI * g.phase)) * clamp(k.sp / 4, 0, 1);
+    const st = mem.st * bob, sq = 1 / Math.pow(st, 0.75);
+    const bank = clamp(k.lat * o.bank, -0.45, 0.45), lean = clampLen(mul(acc, o.lean), 0.4);
+    // B: hips follow velocity, feet alternate, a plant foot stays pinned for a moment
+    if (k.sp > 0.4 || mem.hip == null) mem.hip = k.sp > 0.4 ? Math.atan2(k.h[1], k.h[0]) : facing;
+    const hip = mem.hip;
+    const toW = (a, x, y) => add(pos, [Math.cos(a) * x - Math.sin(a) * y, Math.sin(a) * x + Math.cos(a) * y]);
+    const stride = Math.min(o.strideMax, o.stride * k.sp), q = Math.cos(Math.PI * g.phase);
+    let out = `<ellipse class="shadow" cx="${f(pos[0] - lean[0] * 0.4)}" cy="${f(pos[1] - lean[1] * 0.4 + 0.12)}" rx="${f(0.55 * st)}" ry="${f(0.8 * sq)}" transform="rotate(${f(hip * DEG)} ${f(pos[0] - lean[0] * 0.4)} ${f(pos[1] - lean[1] * 0.4 + 0.12)})"/>`;
+    const last = g.strikes[g.strikes.length - 1], pinned = last && last.plant && t - last.t < 0.22 ? last : null;
+    const feet = [-1, 1].map(side => { const sx = side === g.side ? stride * q : -stride * q; return { p: pinned && pinned.side === side ? pinned.p : toW(hip, sx, side * o.footY), side, sx }; });
+    out += `<g class="${team}">`;
+    for (const ft of feet) out += `<ellipse class="ft" cx="${f(ft.p[0])}" cy="${f(ft.p[1])}" rx="${o.footW}" ry="${o.footH}" transform="rotate(${f(hip * DEG)} ${f(ft.p[0])} ${f(ft.p[1])})"${pinned && pinned.side === ft.side ? ' stroke-width=".12"' : ''}/>`;
+    // shoulders: intent (B) plus bank into the turn (A), stretched along the body axis
+    const sh = hip + clamp(wrap(facing - hip), -1.2, 1.2) + bank, C = add(pos, lean);
+    let arms = '';
+    if (o.arms) for (const ft of feet) {
+      const s0 = toW(sh, -0.05, ft.side * 0.7 * sq), hand = toW(sh, -ft.sx * o.arms + 0.05, ft.side * 0.82 * sq);
+      arms += `M${f(s0[0] + lean[0])} ${f(s0[1] + lean[1])}L${f(hand[0] + lean[0])} ${f(hand[1] + lean[1])}`;
+    }
+    if (team === 'D' && k.sp < 3) { const a = toW(sh, 0, -.6), b = toW(sh, .72, -.88), c2 = toW(sh, 0, .6), d = toW(sh, .72, .88); arms = `M${f(a[0] + lean[0])} ${f(a[1] + lean[1])}L${f(b[0] + lean[0])} ${f(b[1] + lean[1])}M${f(c2[0] + lean[0])} ${f(c2[1] + lean[1])}L${f(d[0] + lean[0])} ${f(d[1] + lean[1])}`; }
+    if (arms) out += `<path class="arm" d="${arms}"/>`;
+    const hp = add(add(C, [Math.cos(sh) * 0.12 * st, Math.sin(sh) * 0.12 * st]), mul(lean, o.head));   // the head leans further than the body
+    out += `<g transform="translate(${f(C[0])} ${f(C[1])}) rotate(${f(sh * DEG)}) scale(${f(st)} ${f(sq)})"><rect class="sh" x="-.4" y="-.72" width=".62" height="1.44" rx=".31"/></g>` +
+         `<circle class="hd" cx="${f(hp[0])}" cy="${f(hp[1])}" r="${o.headR}"/>`;
+    return out + '</g>';
+  };
+}
+
+  const BOUNCY = { sq: 1.4, sqLo: 0.62, sqHi: 1.6, bob: 0.08, bank: 0.045, lean: 0.045, head: 1.3, stride: 0.11, strideMax: 0.72, footY: 0.3, footW: .26, footH: .15, arms: 1.25, headR: .42 };
+  return { draw: makeCombo(BOUNCY) };
+})();
+const animMem = [];
+// Energy "body tells": mix the team colours toward grey with the reserve, the head toward dark with the burst
+const mixHex = (a, b, t) => { const p = h => [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16)); const A = p(a), B = p(b); return '#' + A.map((v, k) => Math.round(v + (B[k] - v) * t).toString(16).padStart(2, '0')).join(''); };
+let teamCols = null;
+function tintBody(svg, tm, burst, reserve) {
+  const fade = 0.75 * (1 - reserve), dim = 0.55 * (1 - Math.min(1, burst / 0.6));
+  if (fade < 0.02 && dim < 0.02) return svg;
+  if (!teamCols) { const cs = getComputedStyle(document.documentElement), g = v => cs.getPropertyValue(v).trim(); teamCols = { O: [g('--off'), g('--off-2')], D: [g('--def'), g('--def-2')] }; }
+  const [main, dark] = teamCols[tm] || teamCols.O, grey = '#8d948f', body = mixHex(dark, grey, fade);
+  return svg.replace(/class="sh"/g, `class="sh" style="fill:${body}"`).replace(/class="ft"/g, `class="ft" style="fill:${body}"`)
+            .replace(/class="hd"/g, `class="hd" style="fill:${mixHex(mixHex(main, grey, fade), '#1d2420', dim)}"`);
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { teamCols = null; });
+
+function figure(t, dn){
+  if (dn) return `<path class="arm" d="M.2 -.35L1.25 -.5M.2 .35L1.25 .5"/><rect class="sh" x="-1.25" y="-.42" width="1.75" height=".84" rx=".42"/><circle class="hd" cx=".55" r=".44"/>`;
+  const arms = t === 'D' ? `<path class="arm" d="M0 -.6L.72 -.88M0 .6L.72 .88"/>` : '';
+  return arms + `<rect class="sh" x="-.46" y="-.74" width=".7" height="1.48" rx=".35"/><circle class="hd" cx=".1" r=".45"/>`;
+}
+// Public page (build sets window.ULTI_MODE = 'simple'): fewer tools, clicks always work the live-play way
+const SIMPLE = window.ULTI_MODE === 'simple';
+if (SIMPLE) document.documentElement.classList.add('simple');
+const LIVE = () => autoOn || SIMPLE;   // clicks select, Play as takes over, the field sends your player
+const meIdx = () => S && S.user ? S.user.i : -1;   // the player you control in live play (Let it play)
+let S = null, ctrl = -1, focus = 2, hist = [], hi = 0, evals = [], drag = null, autoOn = false, hover = null, opts = [], scen = {}, ready = false;
+
+/* ---------- scenarios: built-in + playbook steps ---------- */
+function loadScenarios(plays){
+  scen = {};
+  for (const [k, v] of Object.entries(G.SCENARIOS)) scen['s:' + k] = { title: v.title, holder: v.holder, pos: v.pos, stall: 0, vary: true };
+  scen['s:random'] = { title: 'Random spot on the field', random: true };
+  for (const p of plays || []) {
+    const d = p.data; if (!d || !d.field || d.field.L !== 30 || d.field.W !== 18 || d.defense !== 'person') continue;
+    const walk = (id, depth) => { const n = d.nodes[id]; if (!n) return;
+      if (typeof n.disc === 'string' && n.disc[0] === 'O' && n.pos[n.disc][0] < L - EZ) scen['p:' + p.id + ':' + id] = { title: `${d.title}: ${n.option || n.title}`, holder: n.disc, pos: n.pos, stall: 0, group: 'Playbook' };
+      (n.children || []).forEach(c => walk(c, depth + 1)); };
+    walk(d.rootId, 0);
+  }
+  const sel = $('#scen');
+  const builtIn = Object.entries(scen).filter(([k]) => k.startsWith('s:')), pb = Object.entries(scen).filter(([k]) => k.startsWith('p:'));
+  sel.innerHTML = `<optgroup label="Situations">${builtIn.map(([k, v]) => `<option value="${k}">${esc(v.title)}</option>`).join('')}</optgroup>` +
+    (pb.length ? `<optgroup label="From the playbook">${pb.map(([k, v]) => `<option value="${k}">${esc(v.title)}</option>`).join('')}</optgroup>` : '');
+}
+function newGame(){
+  const base = scen[$('#scen').value] || scen['s:restart'], seed = Math.floor(Math.random() * 1e6) + 1;
+  // built-in starts vary a little on every reset; playbook steps start exactly as drawn
+  const sc = base.random ? G.randomSetup(seed) : base.vary ? G.varied(base, seed) : base;
+  S = G.create(sc, { seed, dice: $('#dice').value });
+  S.evalNow = G.evalNow(S);
+  anim = null; doneAt = null;
+  hist = [G.snapshot(S)]; hi = 0; evals = [[0, S.evalNow]]; autoOn = false; $('#auto').setAttribute('aria-pressed', false); autoLabel();
+  G.think(S, -1); // first decisions, no time passes
+  render();
+}
+function pushHist(){
+  if (hi < hist.length - 1) { hist = hist.slice(0, hi + 1); evals = evals.filter(e => e[0] <= S.t); }
+  const last = hist[hist.length - 1];
+  if (!last || S.t - last.t >= 0.099 || S.done) { hist.push(G.snapshot(S)); if (hist.length > 1500) hist.shift(); }
+  hi = hist.length - 1;
+  evals.push([S.t, S.evalNow]);
+}
+
+/* ---------- time ---------- */
+function advance(dt, path){
+  if (!S || S.done) return;
+  let left = dt, from = path ? path(0) : null, done = 0;
+  while (left > 1e-6 && !S.done) {
+    const step = Math.min(left, 0.5), a = (dt - left) / dt, b = (dt - left + step) / dt;
+    G.advance(S, step, autoOn || !path ? -1 : ctrl, path ? (u => path(a + (b - a) * u)) : null);
+    left -= step; done += step;
+  }
+  pushHist();
+  // a pick stopped play while you were stepping by hand: play the stoppage out (2x) up to the check
+  if (S.setup && S.setup.kind === 'pick' && !autoOn && !drag && !anim) setTimeout(() => { if (!anim && S.setup) animate(6, -1, null, true); }, 0);
+}
+function wait(){ if (S && !S.done) { advance(0.5, null); render(); } }
+function back(){ if (hi > 0) { hi = Math.max(0, hi - 2); S = G.restore(hist[hi]); render(); } }
+// step through time: back = earlier snapshots; forward = replay recorded snapshots, then simulate new time
+function stepBack(sec){
+  if (!S) return; const want = S.t - sec;
+  let j = hi; while (j > 0 && hist[j].t > want + 1e-6) j--;
+  if (j !== hi) { hi = j; S = G.restore(hist[hi]); render(); }
+}
+function stepFwd(sec){
+  if (!S) return; const want = S.t + sec;
+  if (hi < hist.length - 1) {
+    let j = hi; while (j < hist.length - 1 && hist[j + 1].t <= want + 1e-6) j++;
+    if (j === hi) j++;
+    hi = j; S = G.restore(hist[hi]); render(); return;
+  }
+  if (!S.done) { advance(sec, null); render(); }
+}
+
+let rafT = null, autoAcc = 0, doneAt = null;
+// the possession is over: the other team takes the disc (or receives after a goal) and play goes on
+function playOn(){
+  if (!S || !S.done) return;
+  G.nextPossession(S);
+  face.push(...face.splice(0, 4));                       // indices swap teams; keep each person's facing
+  if (focus >= 0) focus = (focus + 4) % 8;               // keep the same person selected
+  pushHist(); render();
+  if (!autoOn && S.setup) animate(20, -1, null, true);   // walk to the line-up (click anywhere to stop and rearrange)
+}
+function autoLoop(ts){
+  if (!autoOn) return;
+  if (rafT == null) rafT = ts;
+  autoAcc += Math.min(0.25, (ts - rafT) / 1000) * +$('#speed').value; rafT = ts;
+  const n = Math.min(6, Math.floor(autoAcc / 0.05 + 1e-9));   // game time moves in 0.05 s steps
+  if (n > 0 && S && !S.done) { autoAcc -= n * 0.05; G.advance(S, n * 0.05, -1); pushHist(); render(); }
+  if (S && S.done) {   // show the result for a moment, then the other team takes it
+    autoAcc = 0;   // don't bank time during the pause (it used to fast-forward afterwards)
+    if (S.done.gameOver) { autoOn = false; $('#auto').setAttribute('aria-pressed', false); autoLabel(); render(); return; }
+    if (doneAt == null) { doneAt = ts; render(); }
+    else if (ts - doneAt > 1400) { doneAt = null; playOn(); }
+  } else doneAt = null;
+  requestAnimationFrame(autoLoop);
+}
+
+/* ---------- drawing ---------- */
+const DEFS = `<defs>
+  <marker id="ah-E" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path class="ah-E" d="M0 0L10 5L0 10z"/></marker>
+  <marker id="ah-Y" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path class="ah-Y" d="M0 0L10 5L0 10z"/></marker>
+  <marker id="ah-C" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path class="ah-C" d="M0 0L10 5L0 10z"/></marker></defs>`;
+function field(){
+  let s = `<rect class="turf" x="0" y="0" width="${L}" height="${W}"/>`;
+  for (let x = EZ, i = 0; x < L - EZ; x += 3, i++) if (i % 2) s += `<rect class="mow" x="${x}" y="0" width="3" height="${W}"/>`;
+  s += `<rect class="ezr" x="0" y="0" width="${EZ}" height="${W}"/><rect class="ezr" x="${L - EZ}" y="0" width="${EZ}" height="${W}"/>`;
+  s += `<rect class="chalk" x="0" y="0" width="${L}" height="${W}"/><line class="chalk" x1="${EZ}" y1="0" x2="${EZ}" y2="${W}"/><line class="chalk" x1="${L - EZ}" y1="0" x2="${L - EZ}" y2="${W}"/>`;
+  for (const bx of [EZ + 2, L - EZ - 2]) s += `<path class="chalk" d="M${bx - .3} ${W / 2 - .3}L${bx + .3} ${W / 2 + .3}M${bx + .3} ${W / 2 - .3}L${bx - .3} ${W / 2 + .3}"/>`;
+  s += `<text class="eztext" style="font-size:1px" transform="translate(${EZ / 2 + .35} ${W / 2}) rotate(-90)" text-anchor="middle">BLUE SCORES HERE</text><text class="eztext" style="font-size:1px" transform="translate(${L - EZ / 2 + .35} ${W / 2}) rotate(-90)" text-anchor="middle">ORANGE SCORES HERE</text>`;
+  for (let x = 0; x <= L; x += 5) s += `<text class="tick" x="${x}" y="${W + 1.05}" text-anchor="middle">${x}m</text>`;
+  s += `<text class="dir" x="${L / 2}" y="-.6" text-anchor="middle">${S && S.flipped ? 'BLUE ATTACKS  ←' : 'ORANGE ATTACKS  →'}  FORCE FLICK</text>`;
+  return s;
+}
+function pathOf(t, q0 = 0.03, q1 = 0.95){ let d = ''; for (let i = 0; i <= 14; i++) { const p = t.at(q0 + (q1 - q0) * i / 14); d += (i ? 'L' : 'M') + XF(p); } return d; }
+function draw(){
+  const s = S; let o = DEFS + field();
+  // AI macro arrows + labels
+  for (let i = 0; i < 8; i++) {
+    if (drag && drag.i === i) continue;
+    const m = s.macro[i], P = s.pos[i];
+    if (i < 4 && m.target && ['under', 'deep', 'in', 'up', 'clear', 'dump-back', 'dump-up', 'catch'].includes(m.kind) && dist(P, m.target) > 0.8)
+      o += `<path class="marrow${hover && hover.kind === 'macro' && hover.i === i ? ' hl' : ''}" d="M${XF(P)}L${XF(m.target)}" marker-end="url(#ah-C)"/><path class="hit" data-macro="${i}" d="M${XF(P)}L${XF(m.target)}"><title>Play on until ${LABELS[PIDS[i]]} finishes: ${esc(m.label)}</title></path>`;
+  }
+  // engine throw lines (thrower's options)
+  const res = s.holder >= 0 ? s.lastSearch : null;
+  if (res && res.lines && !s.done && !s.setup) {
+    const lines = res.lines.slice(0, 3);
+    lines.forEach((l, i) => {
+      const close = res.lines[0].q - l.q <= 0.05;
+      if (hover && hover.kind === 'throw' && hover.i !== i) return;
+      o += `<path class="engl${i ? ' alt' : ''}" d="${pathOf(l.throw)}" marker-end="url(#ah-E)" opacity="${close ? 1 : 0.45}"/><path class="hit" data-throw="${i}" d="${pathOf(l.throw)}"><title>Throw it: ${esc(l.throw.name)} to ${LABELS[l.to]}</title></path>`;
+      o += `<g class="engb" data-throw="${i}" style="cursor:pointer" transform="translate(${r2(X(l.B)[0] + .7)} ${r2(X(l.B)[1] - .7)})"><circle r=".42"/><text>${i + 1}</text></g>`;
+      // the throw's name beside its number (and the arc when the thrower changes it), on the side with room
+      const Bx = X(l.B), arc = SIM.FLY && SIM.FLY[l.throw.type] && !l.throw.over ? (l.throw.arc === 0 ? ' · low' : l.throw.arc === 2 ? ' · lofted' : '') : '', right = Bx[0] < L - 7;
+      o += `<text class="engn" data-throw="${i}" x="${r2(right ? Bx[0] + 1.3 : Bx[0] + .1)}" y="${r2(Bx[1] - .7)}" text-anchor="${right ? 'start' : 'end'}" opacity="${close ? 1 : 0.7}">${esc(l.throw.name + arc)}</text>`;
+    });
+  }
+  // your options
+  if ((!LIVE() || focus === meIdx()) && !s.done && focus >= 0 && focus !== s.holder && !(drag && drag.kind !== 'live')) {
+    opts.slice(0, 3).forEach((op, i) => {
+      if (!op.target || (hover && hover.kind === 'move' && hover.i !== i)) return;
+      const P = s.pos[focus]; if (dist(P, op.target) < 0.6) return;
+      const Tg = X(op.target);
+      o += `<path class="opt${i ? ' alt' : ''}" d="M${XF(P)}L${f2(Tg)}" marker-end="url(#ah-Y)"/><circle class="optdot" cx="${r2(Tg[0])}" cy="${r2(Tg[1])}" r=".45"/>`;
+      o += `<text class="optlbl" x="${r2(Tg[0] + .6)}" y="${r2(Tg[1] + .2)}">${i + 1}</text>`;
+      o += `<path class="hit" data-move="${i}" d="M${XF(P)}L${f2(Tg)}"><title>${esc(cap(op.label))}</title></path><circle class="hitdot" data-move="${i}" cx="${r2(Tg[0])}" cy="${r2(Tg[1])}" r=".8"/>`;
+    });
+  }
+  // where the thrower thinks players are, when that's off (the gaze model itself isn't drawn)
+  if (s.belief && s.holder >= 0 && $('#vision').getAttribute('aria-pressed') === 'true') {
+    const b = s.belief;
+    for (let j = 0; j < 8; j++) {
+      if (j === s.holder) continue;
+      const B = X(b.pos[j]), T = X(s.pos[j]), off = Math.hypot(B[0] - T[0], B[1] - T[1]);
+      if (off < 0.6 && b.vis[j]) continue;
+      o += `<g class="ghost ${teamOf(j)}"><line x1="${r2(T[0])}" y1="${r2(T[1])}" x2="${r2(B[0])}" y2="${r2(B[1])}"/><circle cx="${r2(B[0])}" cy="${r2(B[1])}" r=".9"/>` +
+        (b.vis[j] ? '' : `<text x="${r2(B[0])}" y="${r2(B[1])}">?</text>`) + `</g>`;
+    }
+  }
+  // a throw you asked for, waiting for its window
+  if (s.user && s.user.intent && s.holder === s.user.i) {
+    const it = s.user.intent, H = s.pos[s.holder];
+    o += `<path class="intent" d="M${XF(H)}L${XF(it.B)}"/><circle class="intent" cx="${r2(X(it.B)[0])}" cy="${r2(X(it.B)[1])}" r="${r2(0.5 + 0.6 * Math.max(0, (it.left ?? 1) / 2))}"/>`;
+  }
+  // flight path
+  if (s.flight && s.flight.th) o += `<path class="flightpath" d="${pathOf(s.flight.th, 0, 1)}"/>`;
+  // players
+  const Dp = X(s.holder >= 0 ? s.pos[s.holder] : s.flight ? s.flight.B : s.pos[0]), sg = s.flipped ? -1 : 1;
+  for (let i = 0; i < 8; i++) {
+    const v = [sg * s.vel[i][0], sg * s.vel[i][1]], sp = Math.hypot(v[0], v[1]), Pi = X(s.pos[i]);
+    if (s.down && s.down[i] > 0 && s.lay[i]) face[i] = Math.atan2(sg * s.lay[i].dir[1], sg * s.lay[i].dir[0]);
+    else if (sp > 0.8) face[i] = Math.atan2(v[1], v[0]);
+    else if (i === s.holder) face[i] = s.belief ? s.belief.gaze + (s.flipped ? Math.PI : 0) : s.flipped ? Math.PI : 0;   // the thrower's head follows their gaze
+    else if (dist(Pi, Dp) > 0.5 && (face[i] == null || sp < 0.2)) { const want = Math.atan2(Dp[1] - Pi[1], Dp[0] - Pi[0]); face[i] = face[i] == null ? want : face[i] + 0.25 * Math.atan2(Math.sin(want - face[i]), Math.cos(want - face[i])); }
+  }
+  for (let i = 0; i < 8; i++) {
+    const P = X(s.pos[i]), pid = PIDS[i], t = pid[0], tm = teamOf(i), me = LIVE() ? i === meIdx() : i === focus, E = s.energy ? s.energy[i] : 1, dn = s.down && s.down[i] > 0;
+    let body;
+    if (dn) body = `<g transform="rotate(${r2((face[i] || 0) * 180 / Math.PI)})">${figure(t, dn)}</g>`;
+    else {
+      // facing = intent: toward where they are headed while moving, otherwise the app's facing (gaze for the thrower)
+      const Tg = X(s.tgt[i]), Pd = X(s.pos[i]), toT = [Tg[0] - Pd[0], Tg[1] - Pd[1]];
+      const intent = i !== s.holder && Math.hypot(toT[0], toT[1]) > 0.8 && !s.setup ? Math.atan2(toT[1], toT[0]) : (face[i] || 0);
+      const A = s.acc ? s.acc[i] : [0, 0];
+      body = PlayerAnim.draw([0, 0], [sg * s.vel[i][0], sg * s.vel[i][1]], [sg * A[0], sg * A[1]], intent, t, s.t, animMem[i] = animMem[i] || {});
+    }
+    // energy shows on the body itself: a low reserve drains the colour toward grey, a low burst darkens the head
+    if (!dn) body = tintBody(body, tm, E, s.reserve ? s.reserve[i] : 1);
+    const tx = dn && s.lay[i] ? [r2(Math.cos(face[i]) * .55), r2(Math.sin(face[i]) * .55)] : [r2(Math.cos(face[i] || 0) * .1), r2(Math.sin(face[i] || 0) * .1)];
+    o += `<g class="pl ${tm}${dn ? ' down' : ''}" data-i="${i}" transform="translate(${f2(P)})"><circle r="1.1" fill="transparent"/>` + body + (me ? `<text x="${tx[0]}" y="${tx[1]}">${LABELS[pid]}</text>` : '') +   // only the selected player is named on the field
+      (me ? `<circle class="you-ring${drag && drag.i === i ? ' live' : ''}" r="1.45"/>` : '') + `</g>`;
+    const m = s.macro[i];
+    const lbl = dn ? 'on the ground, getting up' : drag && drag.i === i ? (drag.jog ? 'jogging (recovering)' : E < 0.25 ? 'tired: cruise speed' : 'sprinting') : m && m.label && m.kind !== 'set' && m.kind !== 'hold' ? m.label : '';
+    if (s.flash && s.flash.i === i && s.t - s.flash.t < 1.6 && s.t >= s.flash.t) o += `<text class="pickflash" x="${r2(P[0])}" y="${r2(P[1] - 1.5)}">PICK!</text>`;
+    // action labels live in the side panel ("What everyone is doing"), not on the field
+    if (false && lbl) o += `<text class="mlabel" x="${r2(P[0] + 1.1)}" y="${r2(P[1] + (tm === 'D' ? 1.35 : -1.05))}">${esc(lbl)}</text>`;
+  }
+  // disc
+  let D, h = 1;
+  if (s.holder >= 0) { const Hh = X(s.pos[s.holder]); D = [Hh[0] + .62, Hh[1] - .62]; }
+  else if (s.flight && s.flight.pickup) { D = X(s.flight.B); h = 0.2; }
+  else if (s.flight) {
+    // position along the flight from the disc's own clock: fast early, slower as it glides in
+    const f = s.flight, te = Math.min(s.t - f.t0, f.dur, f.end != null ? f.end : 1e9), q = f.th && f.th.tAt ? G.sAtTime(f.th, te) : Math.min(1, te / f.dur);
+    const p = f.th ? f.th.at(q) : [f.B[0], f.B[1], 1], off = f.miss ? [(f.miss[0] - f.B[0]) * q, (f.miss[1] - f.B[1]) * q] : [0, 0];
+    D = X([p[0] + off[0], p[1] + off[1]]); h = p[2];
+  }
+  else if (s.done && s.done.at) { D = X(s.done.at); h = 0.2; }
+  else D = X(s.pos[0]);
+  const sc = 1 + Math.max(0, h - 1) / 6;
+  // A disc in the air is drawn tilted: seen from above, a banked disc is an ellipse, narrow across its line
+  // of flight. Flat throws are nearly level, around and inside-out throws bank, a hammer or scoober flies
+  // upside down and nearly on edge before it flattens out, a blade stays on edge.
+  let rot = 0, ratio = 1, flip = false;
+  const f = s.flight;
+  if (f && f.th && !f.pickup) {
+    const q = f.th.tAt ? G.sAtTime(f.th, Math.min(s.t - f.t0, f.dur)) : Math.min(1, (s.t - f.t0) / f.dur), a0 = X(f.th.at(Math.min(.97, q))), a1 = X(f.th.at(Math.min(1, q + .03)));
+    rot = Math.atan2(a1[1] - a0[1], a1[0] - a0[0]) * 180 / Math.PI;
+    const TILT = { flat: .86, push: .92, float: .97, high: .84, huck: .84, io: .6, oi: .6, laser: .8, loft: .95 };
+    const ty = f.th.type;
+    ratio = ty === 'hammer' ? .22 + .38 * q : ty === 'scoober' ? .34 + .3 * q : ty === 'blade' ? .24 + .14 * q : (TILT[ty] || .9);
+    flip = ty === 'hammer' || ty === 'scoober';
+  }
+  const ry = r2(.4 * ratio), ry2 = r2(.24 * ratio);
+  o += `<ellipse class="shadow" cx="${r2(D[0] + (h - 1) * .18)}" cy="${r2(D[1] + (h - 1) * .25)}" rx=".36" ry="${r2(.28 * Math.max(.5, ratio))}" transform="rotate(${r2(rot)} ${r2(D[0] + (h - 1) * .18)} ${r2(D[1] + (h - 1) * .25)})"/>` +
+    `<g class="disc${flip ? ' flip' : ''}" transform="translate(${f2(D)}) rotate(${r2(rot)}) scale(${r2(sc)})"><ellipse class="d1" rx=".4" ry="${ry}"/><ellipse class="d2" rx=".24" ry="${ry2}"/></g>`;
+  $('#svg').innerHTML = o;
+  const sc0 = s.score || [0, 0];
+  $('#clock').textContent = `Orange ${sc0[0]} : ${sc0[1]} Blue · t ${s.t.toFixed(1)} s · ` + (s.setup ? (s.setup.kind === 'pick' ? 'stopped for a pick' : 'lining up') : s.holder >= 0 ? `${s.flipped ? 'Blue' : 'Orange'} disc, stall ${Math.floor(s.stall)}` : s.flight && s.flight.pickup ? 'picking up the disc' : s.flight ? 'disc in the air' : '');
+}
+function panel(){
+  const s = S, v = s.evalNow ?? 0.5;
+  $('#evalfill').style.height = (v * 100) + '%';
+  $('#evalfill').style.background = s.flipped ? 'var(--def)' : ''; $('#evalbar').style.background = s.flipped ? 'var(--off)' : '';
+  $('#evalnum').style.color = s.flipped ? 'var(--def-ink)' : ''; $('#evalnum').textContent = Math.round(v * 100);
+  $('#evbig').textContent = ready ? pct(v) : '–';
+  $('#evtxt').textContent = !ready ? 'Loading the engine…' : s.done ? (s.done.reason === 'goal' ? `Goal for ${s.done.team ? 'Blue' : 'Orange'}: ${s.done.text}` : s.done.text) : s.setup ? `chance ${s.flipped ? 'Blue' : 'Orange'} scores, once the disc is in` : s.holder >= 0 ? `chance ${s.flipped ? 'Blue' : 'Orange'} scores this possession` : 'expected, with the disc in the air';
+  // sparkline
+  const pts = evals.filter(e => e[0] <= s.t + 1e-6), tmax = Math.max(4, s.t);
+  $('#spark').innerHTML = `<line class="base" x1="0" y1="23" x2="300" y2="23"/>` + (pts.length > 1 ? `<path d="${pts.map((e, i) => (i ? 'L' : 'M') + r2(e[0] / tmax * 300) + ' ' + r2(46 - e[1] * 46)).join('')}"/>` : '');
+  // your options
+  const yours = $('#yours');
+  const fl = focus >= 0 ? LABELS[PIDS[focus]] : '';
+  if (LIVE() && focus < 0) { $('#youh').textContent = 'Options'; yours.innerHTML = `<p class="hint">${meIdx() >= 0 ? `You are ${LABELS[PIDS[meIdx()]]}. Click them to see your options.` : (autoOn ? 'The AI is playing everyone. Click a player, then Play as them (or click them again) to take over.' : 'Press Play to start. Click a player, then Play as them (or click them again) to take over.')}</p>`; }
+  else if (LIVE() && focus !== meIdx()) {
+    $('#youh').textContent = fl;
+    yours.innerHTML = `<p class="hint">${fl} is played by the AI${meIdx() >= 0 ? `; you are ${LABELS[PIDS[meIdx()]]}` : ''}. Take over: click ${fl} again, or</p><p><button class="btn primary" data-act="playas">Play as ${fl}</button></p><p class="hint">Then click or drag on the field to run; as the handler click a purple throw (or any spot) and it goes when the window opens. Left idle, your player goes on autopilot until your next order. Esc hands them back.</p>`;
+  }
+  else if (focus < 0) { $('#youh').textContent = 'Options'; yours.innerHTML = '<p class="hint">Click a player to see their options, or drag one to move them.</p>'; }
+  else if (s.done) { yours.innerHTML = `<p class="hint">${esc(s.done.text)} Use Back or the time slider to try something else.</p>`; }
+  else if (focus === s.holder) {
+    $('#youh').textContent = fl + "'s throws";
+    const res = s.lastSearch, it = s.user && s.user.i === s.holder ? s.user.intent : null;
+    const autoNote = autoOn && s.user && s.user.i === focus && s.user.auto ? '<p class="hint">On autopilot: the AI is playing for you until your next order.</p>' : '';
+    const waitRow = it ? `<div class="row best"><span class="rk">…</span><span>Waiting for the window: ${esc(it.kind === 'line' ? cap(it.name) + ' to ' + LABELS[PIDS[it.to]] : 'throw to ' + LABELS[PIDS[it.to]] + ' where you pointed')}</span><span class="q">${it.left != null ? Math.max(0, it.left).toFixed(1) + ' s' : ''}</span><small>${it.pNow != null ? 'Now ' + pct(it.pNow) + ' to complete. ' : ''}It goes as soon as it's there, or ${LABELS[PIDS[s.holder]]} holds.</small></div>` : '';
+    if (!res || !res.lines) yours.innerHTML = '<p class="hint">Wait a moment to look downfield (about 1 s after the catch).</p>';
+    else {
+      const holdBest = res.holdQ != null && res.holdQ > (res.bestNow ?? 0) + G.HOLD_GAIN;
+      const lt = res.later;
+      yours.innerHTML = autoNote + waitRow + (holdBest ? `<div class="row best"><span class="rk">1</span><span>Hold half a second${lt ? `: ${esc(lt.throw.name)} to ${LABELS[lt.to]} opens up` : ''}</span><span class="q">${pct(lt ? lt.q : res.holdQ)}</span><small>Waiting gives a better throw than anything now. Press Wait.</small></div>` : '') +
+        res.lines.slice(0, 4).map((l, i) => `<button class="row${!holdBest && i === 0 ? ' best' : ''}" data-throw="${i}"><span class="rk">${i + 1 + (holdBest ? 1 : 0)}</span><span>${esc(cap(l.throw.name))} to ${LABELS[l.to]}${l.lead ? `, ${l.lead} m lead` : ''}${i && res.lines[0].q - l.q <= 0.03 ? '<span class="chip">close</span>' : ''}</span><span class="q">${pct(l.q)}</span><small>${pct(l.p)} to complete, then ${l.throw.goal ? 'goal' : pct(l.vAfter)}${l.reg < l.q - 0.04 ? '. Risky for rec play' : ''}</small></button>`).join('') + (autoOn ? '<p class="hint">Click a throw (here or its purple line) and it goes when the window is open. Click any spot to point a teammate there and throw when they get open.</p>' : '<p class="hint">Ordered for rec play: low-percentage and unusual throws are pushed down a little.</p>');
+    }
+  } else if (s.holder >= 0) {
+    const isD = focus >= 4;
+    $('#youh').textContent = isD ? fl + "'s options (lower is better for the defense)" : fl + "'s options";
+    const best = opts.length ? opts[0].v : 0;
+    yours.innerHTML = opts.slice(0, 4).map((op, i) => `<button class="row${i === 0 ? ' best' : ''}" data-move="${i}"><span class="rk">${i + 1}</span><span>${esc(cap(op.label))}${i && Math.abs(best - op.v) <= 0.01 ? '<span class="chip">close</span>' : ''}</span><span class="q">${pct(op.v)}</span><small>${isD ? 'offense scoring chance if ' + fl + ' does this' : 'scoring chance when ' + fl + ' gets there'}${op.tc ? `, ${op.tc.toFixed(1)} s run` : ''}</small></button>`).join('') +
+      (autoOn ? (s.user && s.user.auto ? '<p class="hint">On autopilot: the AI is playing for you until your next order.</p>' : '') + `<p class="hint">You are ${fl}. Click an option or any spot to run there (hold and drag to steer, Alt to jog). Get open and the thrower will look for you.</p>` : `<p class="hint">Click an option to run it with ${fl}, or drag ${fl} anywhere.</p>`);
+  } else {
+    const me = s.flight && s.flight.recv === focus;
+    $('#youh').textContent = fl + "'s options";
+    yours.innerHTML = `<p class="hint">${me ? `The disc is going to ${fl}. Drag ${fl} to the catch spot (dotted line), or press Wait and the engine runs there.` : 'Disc in the air. Press Wait (Space) or ▶ to play on, or drag someone.'}</p>`;
+  }
+  // everyone else
+  $('#who').innerHTML = PIDS.map((p, i) => `<li><b>${LABELS[p]}</b><span>${S.down && S.down[i] > 0 ? 'on the ground after a layout' : esc(S.macro[i].label || (i < 4 ? 'holds the stack spot' : ''))}<span class="en">burst ${pct(S.energy ? S.energy[i] : 1)}</span>${i === S.holder && S.lastSearch && S.lastSearch.lines && S.lastSearch.lines.length > 1 && S.lastSearch.lines[0].q - S.lastSearch.lines[1].q <= 0.03 ? ' · two good throws' : ''}</span></li>`).join('');
+  $('#log').innerHTML = s.log.slice().reverse().map(l => `<li><span>${l.t.toFixed(1)}s</span>${esc(l.text)}</li>`).join('') || '<li class="hint">Nothing yet.</li>';
+  // banner
+  const b = $('#banner');
+  const team = s.flipped ? 'Blue' : 'Orange', other = s.flipped ? 'Orange' : 'Blue';
+  if (s.done) {
+    const d = s.done, pt = d.reason === 'goal' || d.reason === 'callahan', who = pt ? (d.team ? 'Blue' : 'Orange') : other, cls = (who === 'Orange') ? 'goal' : 'blue';
+    const txt = d.gameOver ? `${who} wins ${Math.max(...s.score)}-${Math.min(...s.score)}` : d.reason === 'callahan' ? `Callahan! ${who} scores` : pt ? `${who} scores` : `Turnover: ${other}'s disc`;
+    b.hidden = false; b.innerHTML = `<b class="${cls}">${txt}</b><span class="hint">${esc(pt ? `${d.reason === 'callahan' ? d.text.replace(/^Callahan! /, '') : d.text} · Orange ${s.score[0]} : ${s.score[1]} Blue` : d.text.replace(/^Turnover: /, ''))}</span>` +
+      (d.gameOver ? `<span><button class="btn" data-act="back2">Back 2 s</button> <button class="btn primary" data-act="again">New game</button></span>` : autoOn ? '' : `<span><button class="btn" data-act="back2">Back 2 s</button> <button class="btn primary" data-act="next">${pt ? 'Next point' : 'Play on'}</button></span>`);
+  } else if (s.setup) {
+    const st = s.setup, hn = st.handler != null ? LABELS[PIDS[st.handler]] : 'The handler';
+    if (st.kind === 'pick') {
+      const dn = LABELS[PIDS[st.picked]], on = LABELS[PIDS[st.picked - 4]];
+      b.hidden = false; b.innerHTML = `<b class="setup">Pick</b><span class="hint">${st.checkAt != null ? `${LABELS[PIDS[s.holder]] || ''} checks the disc in · stall ${Math.floor(s.stall)}` : `play stopped · ${dn} goes back to ${on}`}</span>` + (!autoOn ? `<span><button class="btn primary" data-act="discin">Disc in</button></span>` : '');
+    } else {
+    const msg = s.holder >= 0 ? `${hn} presents the disc` : st.go ? `${hn} goes to the disc` : `${team}'s disc ${st.after === 'callahan' ? 'on the goal line after the Callahan' : 'where the goal was caught'} · ${st.hold ? 'arrange, then Disc in' : 'drag anyone to rearrange'}`;
+    b.hidden = false; b.innerHTML = `<b class="setup">Lining up</b><span class="hint">${msg}</span>` + (!autoOn && (!st.go || (s.holder >= 0 && st.hold)) ? `<span><button class="btn primary" data-act="discin">Disc in</button></span>` : '');
+    }
+  } else b.hidden = true;
+  $('#board').classList.toggle('dead', !!(s.done || s.setup));
+  const hs = $('#hist'); hs.max = Math.max(0, hist.length - 1); hs.value = hi; $('#histt').textContent = `${S.t.toFixed(1)} s`;
+  // scoreboard: the score, game to 7, and how each point was scored
+  const sc = s.score || [0, 0], ptl = s.points || [];
+  $('#scorebar').innerHTML = `<span class="sc o"><span>Orange</span><b>${sc[0]}</b></span><span class="to">game to ${G.GAME_TO}</span><span class="sc d"><b>${sc[1]}</b><span>Blue</span></span>` +
+    `<span class="pts">${ptl.map(p => `<span class="pt ${p.team ? 'd' : 'o'}" title="${p.t.toFixed(1)} s"><i>${p.score[0]}-${p.score[1]}</i>${p.how === 'callahan' ? 'Callahan ' + esc(p.text.replace(/^Callahan! /, '').split(' ')[0]) : esc(p.text)}</span>`).join('')}</span>`;
+}
+function computeOpts(){
+  opts = [];
+  if (!S || (LIVE() && focus !== meIdx()) || S.done || S.holder < 0 || focus < 0 || focus === S.holder) return;
+  opts = focus >= 4 ? G.rankDefense(S, focus) : G.rankOffense(S, focus);
+}
+function render(){ if (!S) return; computeOpts(); draw(); panel(); }
+
+/* ---------- input ---------- */
+function svgPt(e){ const svg = $('#svg'), pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const q = pt.matrixTransform(svg.getScreenCTM().inverse()); return X([Math.max(-0.5, Math.min(L + 0.5, q.x)), Math.max(-0.5, Math.min(W + 0.5, q.y))]); }
+const teleport = e => e.shiftKey || $('#tele').getAttribute('aria-pressed') === 'true';
+$('#svg').addEventListener('pointerdown', e => {
+  if (!S || !ready) return;
+  anim = null;
+  const g = e.target.closest('[data-i]'), th = e.target.closest('[data-throw]');
+  if (LIVE()) { livePointer(e, g, th); return; }
+  if (th && S.holder >= 0 && !S.done) { throwLine(+th.dataset.throw); return; }
+  const mv = e.target.closest('[data-move]'); if (mv && !S.done) { runMove(+mv.dataset.move); return; }
+  const mc = e.target.closest('[data-macro]'); if (mc && !S.done) { runMacro(+mc.dataset.macro); return; }
+  if (g) {
+    const i = +g.dataset.i;
+    focus = i;
+    if (teleport(e)) drag = { kind: 'tele', i, moved: false, shift: e.shiftKey };
+    else if ((i !== S.holder || S.setup) && !S.done && !autoOn) { drag = { kind: 'run', i, moved: false }; ctrl = i; if (S.setup) S.setup.hold = true; }
+    else { render(); return; }
+    e.preventDefault(); $('#svg').setPointerCapture(e.pointerId); render();
+    return;
+  }
+  if (focus === S.holder && S.holder >= 0 && !S.done && !autoOn) { const B = svgPt(e); const r = G.throwTo(S, B); if (r) { S.evalNow = G.evalNow(S); pushHist(); render(); } }
+  else { focus = -1; render(); }
+});
+// Live play: click a player to take them over; click or drag on the field to run; as the handler click a
+// purple throw or a spot (the throw goes when its window opens).
+function livePointer(e, g, th){
+  if (S.done || S.setup && !g) return;
+  const me = meIdx();
+  if (th && me >= 0 && me === S.holder && S.lastSearch && S.lastSearch.lines) { G.userThrow(S, { line: S.lastSearch.lines[+th.dataset.throw] }); render(); return; }
+  const mv = e.target.closest('[data-move]');
+  if (mv && me >= 0 && opts[+mv.dataset.move]) { G.userGo(S, opts[+mv.dataset.move].target, e.altKey); render(); return; }
+  if (g && +g.dataset.i !== me) {   // first click selects, a second click on the same player takes over
+    const i = +g.dataset.i;
+    if (focus === i) G.setUser(S, i);
+    focus = i; render(); return;
+  }
+  if (me < 0) { focus = -1; render(); return; }
+  const P = svgPt(e); focus = me;
+  if (me === S.holder) { if (!g) G.userThrow(S, { B: P }); render(); return; }
+  if (!g) G.userGo(S, P, e.altKey);
+  drag = { kind: 'live', i: me }; e.preventDefault(); $('#svg').setPointerCapture(e.pointerId); render();
+}
+$('#svg').addEventListener('pointermove', e => {
+  if (!drag) return;
+  const P = svgPt(e);
+  if (drag.kind === 'live') { if (meIdx() === drag.i && S.holder !== drag.i) G.userGo(S, P, e.altKey); return; }
+  if (drag.kind === 'tele') { S.pos[drag.i] = P; S.vel[drag.i] = [0, 0]; S.tgt[drag.i] = P.slice(); drag.moved = true; draw(); return; }
+  const now = performance.now();
+  if (drag.lp) { const dtr = Math.max(0.008, (now - drag.lt) / 1000), v = dist(drag.lp, P) / dtr; drag.ptr = drag.ptr == null ? v : 0.7 * drag.ptr + 0.3 * v; }
+  drag.lp = P; drag.lt = now;
+  drag.jog = e.altKey || (drag.ptr != null && drag.ptr < JOG_PTR);
+  // time moves in whole 0.05 s steps at the player's speed; a shorter move waits for the next event
+  const from = S.pos[drag.i].slice(), d = dist(from, P), T = d / dragSpeed(drag.i), n = Math.floor(T / 0.05 + 1e-9);
+  if (n < 1) return;
+  drag.moved = true;
+  const Q = [from[0] + (P[0] - from[0]) * n * 0.05 / T, from[1] + (P[1] - from[1]) * n * 0.05 / T];
+  advance(n * 0.05, u => [from[0] + (Q[0] - from[0]) * u, from[1] + (Q[1] - from[1]) * u]);
+  if (S.done || (drag.i === S.holder && !S.setup)) { drag = null; ctrl = -1; }   // caught it: now they hold the disc
+  render();
+});
+function endDrag(){
+  if (!drag) return;
+  if (drag.kind === 'live') { drag = null; return; }
+  if (drag.kind === 'tele') {
+    if (!drag.moved && drag.shift && drag.i < 4 && drag.i !== S.holder) { S.holder = drag.i; S.flight = null; S.stall = 0; S.done = null; S.macro[drag.i] = { kind: 'hold', label: 'holds the disc', since: S.t }; }
+    if (drag.moved) G.placed(S, drag.i);
+    G.think(S, -1); hist.push(G.snapshot(S)); hi = hist.length - 1;
+  } else if (drag.kind === 'run' && drag.moved && (S.holder !== drag.i || S.setup) && !S.done) G.placed(S, drag.i);
+  drag = null; ctrl = -1; render();
+}
+$('#svg').addEventListener('pointerup', endDrag); $('#svg').addEventListener('pointercancel', endDrag);
+// Clicking an option plays it out on screen at 2x: dur game seconds, the player following path(u) if given.
+const ANIM_SPEED = 2;
+let anim = null;
+function animate(dur, who, path, setup){
+  anim = { dur, left: dur, who, path, last: null, setup };
+  requestAnimationFrame(animStep);
+}
+function animStep(ts){
+  const a = anim; if (!a || !S) return;
+  if (a.last == null) a.last = ts;
+  a.acc = (a.acc || 0) + Math.min(0.1, (ts - a.last) / 1000) * ANIM_SPEED; a.last = ts;
+  const n = Math.min(Math.round(a.left / 0.05), Math.floor(a.acc / 0.05 + 1e-9));
+  if (n > 0 && !S.done) {
+    a.acc -= n * 0.05;
+    const u0 = 1 - a.left / a.dur; a.left -= n * 0.05; const u1 = 1 - a.left / a.dur;
+    G.advance(S, n * 0.05, a.path ? a.who : -1, a.path ? (u => a.path(u0 + (u1 - u0) * u)) : null);
+    pushHist(); render();
+  }
+  // never stop with the disc in the air: play on (the AI takes over your player) until it lands
+  if (!S.done && a.left < 0.025 && S.flight && !(a.who >= 0 && a.who === S.holder)) {
+    const f = S.flight, rest = f.th ? Math.max(0.05, f.t0 + f.dur - S.t + 0.1) : 1;
+    a.left = a.dur = Math.ceil(rest * 20) / 20; a.path = null; a.who = -1; a.acc = 0;
+  }
+  // nor in the middle of a pick stoppage: play it out to the check
+  if (!S.done && a.left < 0.025 && S.setup && S.setup.kind === 'pick' && !a.setup) { a.left = a.dur = 6; a.path = null; a.who = -1; a.acc = 0; a.setup = true; }
+  if (S.done || a.left < 0.025 || (a.who >= 0 && a.who === S.holder) || (a.setup && !S.setup)) { anim = null; render(); return; }
+  requestAnimationFrame(animStep);
+}
+function runMacro(i){
+  const m = S.macro[i]; if (!m || !m.target) return;
+  const d = dist(S.pos[i], m.target);
+  hover = null; animate(Math.round(Math.min(3, Math.max(0.5, SIM.tRun(d) + 0.1)) * 20) / 20, -1, null);
+}
+function throwLine(i){
+  const res = S.lastSearch; if (!res || !res.lines[i]) return;
+  if (LIVE()) { if (meIdx() === S.holder) { G.userThrow(S, { line: res.lines[i] }); render(); } return; }
+  G.release(S, res.lines[i]); S.evalNow = G.evalNow(S); pushHist(); hover = null; render();
+  if (S.flight) animate(Math.ceil((S.flight.dur + 0.1) * 20) / 20, -1, null);   // watch the throw arrive
+}
+function runMove(i){
+  const op = opts[i]; if (!op || !op.target || focus < 0) return;
+  if (LIVE()) { if (focus === meIdx()) { G.userGo(S, op.target); render(); } return; }
+  hover = null;
+  if (focus >= 4) { S.dstyle[focus] = op.kind; S.macro[focus] = { kind: op.kind, label: op.label, since: S.t }; animate(0.5, -1, null); return; }
+  S.macro[focus] = { kind: op.kind, label: op.label, target: op.target.slice(), since: S.t };
+  const from = S.pos[focus].slice(), T = op.target, d = dist(from, T);
+  animate(Math.max(0.25, Math.round(SIM.tRun(d) * 20) / 20), focus, u => [from[0] + (T[0] - from[0]) * u, from[1] + (T[1] - from[1]) * u]);
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-throw]'); if (t && t.tagName === 'BUTTON') { throwLine(+t.dataset.throw); return; }
+  const m = e.target.closest('[data-move]'); if (m) { runMove(+m.dataset.move); return; }
+  const a = e.target.closest('[data-act]'); if (!a) return;
+  if (a.dataset.act === 'again') newGame();
+  if (a.dataset.act === 'playas' && S && focus >= 0) { G.setUser(S, focus); render(); }
+  if (a.dataset.act === 'next') playOn();
+  if (a.dataset.act === 'discin' && S && S.setup) { G.discIn(S); pushHist(); render(); if (S.setup) animate(20, -1, null, true); }
+  if (a.dataset.act === 'back2') { hi = Math.max(0, hi - 8); S = G.restore(hist[hi]); render(); }
+});
+document.addEventListener('mouseover', e => {
+  const t = e.target.closest && e.target.closest('[data-throw],[data-move],[data-macro]');
+  const h = !t ? null : t.dataset.throw != null ? { kind: 'throw', i: +t.dataset.throw } : t.dataset.move != null ? { kind: 'move', i: +t.dataset.move } : { kind: 'macro', i: +t.dataset.macro };
+  if (JSON.stringify(h) === JSON.stringify(hover)) return; hover = h; if (S) draw();
+});
+$('#wait').onclick = wait; $('#stepb').onclick = () => stepBack(0.25); $('#stepf').onclick = () => stepFwd(0.25); $('#reset').onclick = newGame;
+$('#vision').onclick = () => { const b = $('#vision'); b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true'); render(); };
+$('#tele').onclick = () => { const b = $('#tele'); b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true'); };
+$('#auto').onclick = () => { anim = null; autoOn = !autoOn; if (!autoOn && S && S.user && !SIMPLE) G.setUser(S, -1); autoLabel(); $('#auto').setAttribute('aria-pressed', autoOn); rafT = null; autoAcc = 0; if (autoOn) requestAnimationFrame(autoLoop); render(); };
+$('#scen').onchange = newGame; $('#dice').onchange = () => { if (S) S.dice = $('#dice').value; };
+$('#hist').oninput = e => { hi = +e.target.value; S = G.restore(hist[hi]); render(); };
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input,select,textarea')) return;
+  anim = null;
+  if (e.code === 'Space') { e.preventDefault(); wait(); }
+  else if (e.code === 'KeyV' && !e.metaKey && !e.ctrlKey) $('#vision').click();
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); stepBack(e.shiftKey ? 1 : 0.25); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); stepFwd(e.shiftKey ? 1 : 0.25); }
+  else if (e.key === 'z' || e.key === 'Backspace') { e.preventDefault(); back(); }
+  else if (e.key === 'p') $('#auto').click();
+  else if (e.key === 'Escape' && S && S.user) { G.setUser(S, -1); render(); }
+  else if (e.key === 'r') newGame();
+  else if (e.key === 'n' && S && S.done) playOn();
+});
+
+/* ---------- boot ---------- */
+// AI variants (variants/index.json): a value net + team tactics, the same for both teams
+let VARIANTS = [], netCache = {};
+async function useVariant(id){
+  const v = VARIANTS.find(x => x.id === id) || VARIANTS[0]; if (!v) return;
+  try {
+    if (!netCache[v.net]) { const r = await fetch(v.net); if (r.ok) netCache[v.net] = await r.json(); }
+    if (netCache[v.net]) { ENG.load(netCache[v.net]); ready = true; }
+  } catch(e) {}
+  G.setTeamParams(v.tac, v.tac);
+  $('#variant').value = v.id; $('#variant').title = v.note || '';
+  try { localStorage.setItem(SIMPLE ? 'ulti-variant-simple' : 'ulti-variant', v.id); } catch(e) {}
+}
+// the Play button: "Play"/"Pause" on the public page
+function autoLabel(){ if (!SIMPLE) return; const b = $('#auto'); b.textContent = autoOn ? 'Pause' : 'Play'; b.classList.toggle('primary', !autoOn); }
+async function boot(){
+  if (SIMPLE) {
+    $('#dice').value = 'random'; focus = -1;   // real games roll the dice; nobody selected yet
+    $('#more').innerHTML = $('#hint1').outerHTML.replace(/class="hint dbg"/, 'class="hint"').replace(/ id="hint1"/, '') + $('#hint2').outerHTML.replace(/class="hint dbg"/, 'class="hint"').replace(/ id="hint2"/, '');
+    autoLabel();
+  }
+  let plays = [];
+  try { const r = await fetch('plays.json'); if (r.ok) plays = await r.json(); } catch(e) {}
+  loadScenarios(plays);
+  try { const r = await fetch('value.json'); if (r.ok) { ENG.load(await r.json()); ready = true; } } catch(e) {}
+  try { const r = await fetch('variants/index.json?v=702d3f88'); if (r.ok) VARIANTS = await r.json(); } catch(e) {}
+  if (VARIANTS.length) {
+    $('#variant').innerHTML = VARIANTS.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+    let pick = SIMPLE ? 'tactics' : 'classic'; try { pick = localStorage.getItem(SIMPLE ? 'ulti-variant-simple' : 'ulti-variant') || pick; } catch(e) {}
+    await useVariant(pick);
+  }
+  $('#variant').onchange = async () => { await useVariant($('#variant').value); newGame(); };
+  if (!ready) { $('#evtxt').textContent = "The engine's weights didn't load. Moving still works, but the AI can't think."; }
+  newGame();
+}
+boot();
+})();
+</script>
+
+</body></html>
