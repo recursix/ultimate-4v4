@@ -319,6 +319,7 @@ function makeCombo(o) {
     for (const ft of feet) out += `<ellipse class="ft" cx="${f(ft.p[0])}" cy="${f(ft.p[1])}" rx="${o.footW}" ry="${o.footH}" transform="rotate(${f(hip * DEG)} ${f(ft.p[0])} ${f(ft.p[1])})"${pinned && pinned.side === ft.side ? ' stroke-width=".12"' : ''}/>`;
     // shoulders: intent (B) plus bank into the turn (A), stretched along the body axis
     const sh = hip + clamp(wrap(facing - hip), -1.2, 1.2) + bank, C = add(pos, lean);
+    mem.rhand = add(toW(sh, 0.24, 0.8 * sq), lean);   // where the right hand is (+y is the body's right): the disc sits there
     let arms = '';
     if (o.arms) for (const ft of feet) {
       const s0 = toW(sh, -0.05, ft.side * 0.7 * sq), hand = toW(sh, -ft.sx * o.arms + 0.05, ft.side * 0.82 * sq);
@@ -556,7 +557,10 @@ function draw(){
   }
   // disc
   let D, h = 1;
-  if (s.holder >= 0) { const Hh = X(s.pos[s.holder]); D = [Hh[0] + .62, Hh[1] - .62]; }
+  if (s.holder >= 0) {   // in the right hand: beside the body on the right of where they face (screen y points down), a little forward
+    const Hh = X(s.pos[s.holder]), m = animMem[s.holder], a = face[s.holder] || 0, fw = [Math.cos(a), Math.sin(a)], rt = [-fw[1], fw[0]];
+    D = m && m.rhand ? [Hh[0] + m.rhand[0], Hh[1] + m.rhand[1]] : [Hh[0] + .58 * rt[0] + .22 * fw[0], Hh[1] + .58 * rt[1] + .22 * fw[1]];
+  }
   else if (s.flight && s.flight.pickup) { D = X(s.flight.B); h = 0.2; }
   else if (s.flight) {
     // position along the flight from the disc's own clock: fast early, slower as it glides in
