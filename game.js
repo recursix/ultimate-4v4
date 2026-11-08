@@ -42,7 +42,8 @@
   const USER_HOLD = 1.0;
   // live play: the player you control. USER_CALL: how much a thrower favours an open look to you (you call for it);
   // a throw you pick waits up to INTENT_LINE s for its window (INTENT_SPOT s for a spot you point at)
-  const USER_CALL = 0.05, INTENT_LINE = 1.2, INTENT_SPOT = 2.2, INTENT_DT = 0.1;   // seconds an offensive player you moved keeps your spot (a defender stays parked until the next throw)
+  const USER_CALL = 0.05, INTENT_LINE = 1.2, INTENT_SPOT = 2.2, INTENT_DT = 0.1;
+  const USER_IDLE = 3.0, USER_AUTO_STALL = 5;   // left idle this long on your spot (a handler: this stall), your player goes on autopilot   // seconds an offensive player you moved keeps your spot (a defender stays parked until the next throw)
   // Energy: sprinting above cruise speed drains a burst bucket; jogging or standing refills it.
   const VTOP = SIM.P.vmax, VCRUISE = 4.5, VJOG = 3.4;
   // Layouts: a dive reaches LAY_REACH past normal catching range, the player is down for LAY_DOWN seconds.
@@ -191,7 +192,7 @@
       const m = (B0.gap > 0 ? SIM.tRunFrom(B0.gap, 0, 0, SIM.P.tauSprint) : SIM.P.inReach * B0.gap) + react, p = 1 / (1 + Math.exp(m / 0.1));
       if (s.dbg) s.dbg.push({ d: PIDS[d], mark, gap: +B0.gap.toFixed(2), dd: +B0.dd.toFixed(2), r: B0.r, pBlock: +p.toFixed(2), pred: +f.p.toFixed(2), pe: +(f.th.pe||0).toFixed(2), bId: f.th.bId, early: +f.th.early.toFixed(2), type: f.th.type, side: f.th.side, te: +te.toFixed(2), Hd: f.A.map(v=>+v.toFixed(1)), M: s.pos[d].map(v=>+v.toFixed(1)), Q: B0.Q.map(v=>+v.toFixed(1)) });
       const win = s.dice === 'random' ? s.rand() < p : p >= 0.5;
-      const dived = B0.dd > B0.r + 0.3;
+      const dived = !mark && B0.dd > B0.r + 0.3;   // the mark reaches, never dives (it would go through the thrower)
       if (dived) layOut(s, d, B0.Q);
       if (win) {
         // knocked down, or caught: the deeper inside their reach, the likelier they catch it (a mark or a dive mostly knocks it down)
@@ -499,7 +500,7 @@
   function decide(s, ctrl) {
     if (s.setup) return;   // nobody decides anything until the disc is in
     ctxEnergy(s);
-    const me = s.user ? s.user.i : -1;   // the player you control in live play: the AI never decides for them
+    const me = s.user && !s.user.auto ? s.user.i : -1;   // the player you control in live play: the AI never decides for them (unless on autopilot)
     const pick = ranked => { // minimal randomness: choose among options within 0.3 points of the best
       if (!ranked.length) return null;
       if (EXPLORE.T > 0) return softPick(s, ranked, o => Math.abs(o.v - ranked[0].v));
@@ -1036,11 +1037,13 @@
   }
   function userGo(s, P, jog) {
     const u = s.user; if (!u || u.i === s.holder) return;
+    u.auto = false;
     s.macro[u.i] = { kind: 'user', live: true, jog: !!jog, label: jog ? 'jogs where you send them' : 'runs where you send them', target: clampF(P, 0.4), since: s.t };
   }
   // a throw you asked for: {line} (one of the proposed throws) or {B} (a spot you pointed at)
   function userThrow(s, want) {
     const u = s.user; if (!u || u.i !== s.holder || s.done || s.setup) return null;
+    u.auto = false;
     if (want.line) {
       const l = want.line;
       u.intent = { kind: 'line', to: PIDS.indexOf(l.to), B: l.B.slice(), p0: l.p, q0: l.q, name: l.throw.name, t0: s.t, until: s.t + INTENT_LINE, next: s.t };
@@ -1093,10 +1096,19 @@
     for (let k = 1; k <= steps && !s.done; k++) {
       if (s.t >= s.nextDecision - 1e-6) { decide(s, ctrl); s.nextDecision = s.t + DECIDE; }
       if (s.user && !s.setup && !s.done) {
-        const ui = s.user.i;
-        if (s.user.intent) checkIntent(s);
-        // after a catch, a throw or a turnover the AI must not take your player back: they stay where they are
-        if (ui !== s.holder && !(s.flight && s.flight.recv === ui) && s.macro[ui].kind !== 'user') userGo(s, s.pos[ui]);
+        const u = s.user, ui = u.i, m = s.macro[ui];
+        if (u.intent) checkIntent(s);
+        // you just caught it: the throw is yours to pick
+        if (ui === s.holder && u.wasHolder !== true) u.auto = false;
+        u.wasHolder = ui === s.holder;
+        // autopilot while you leave them idle: a cutter standing on your spot for USER_IDLE s, a handler at USER_AUTO_STALL
+        if (!u.auto && ui === s.holder && !u.intent && s.stall >= USER_AUTO_STALL) { u.auto = true; s.log.push({ t: s.t, text: `${LABELS[PIDS[ui]]} is on autopilot (stall ${Math.floor(s.stall)}): the AI throws for you.` }); }
+        if (!u.auto && ui !== s.holder && m.kind === 'user' && m.live) {
+          if (dist(s.pos[ui], m.target) < 0.9) { if (m.arrived == null) m.arrived = s.t; else if (s.t - m.arrived > USER_IDLE) { u.auto = true; s.macro[ui] = { kind: 'set', label: 'on autopilot', target: null, since: s.t - 1 }; } }
+          else m.arrived = null;
+        }
+        // after a catch, a throw or a turnover the AI must not take your player back (unless on autopilot)
+        if (!u.auto && ui !== s.holder && !(s.flight && s.flight.recv === ui) && s.macro[ui].kind !== 'user') userGo(s, s.pos[ui]);
       }
       targets(s, ctrl);
       physics(s, SUB, ctrl, ctrlPath ? ctrlPath(k / steps) : null);
