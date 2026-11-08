@@ -31,5 +31,16 @@
    "oneCutter": false
   },
   "note": "Two teammates can move together (clear + cut), no one-cutter rule. Lost to Energy 44.5/100, 18% hucks."
+ },
+ {
+  "id": "gridpair",
+  "name": "Free cuts + pairs",
+  "net": "variants/gridpair.json",
+  "tac": {
+   "vocab": "grid",
+   "coord": "pair",
+   "oneCutter": false
+  },
+  "note": "Free cuts plus two-player moves. Beat Energy 73/100, 25% hucks."
  }
 ]
