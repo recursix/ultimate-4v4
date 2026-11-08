@@ -42,5 +42,33 @@
    "oneCutter": false
   },
   "note": "Free cuts plus two-player moves. Beat Energy 73/100, 25% hucks."
+ },
+ {
+  "id": "tactics",
+  "name": "Tuned tactics",
+  "net": "variants/tactics.json",
+  "tac": {
+   "dumpBack": 3.339,
+   "dumpSide": 5.344,
+   "stackNear": 8,
+   "stackFar": 15.197,
+   "underX": 4.785,
+   "underY": 5.087,
+   "deepX": 16.546,
+   "inX": 7.5,
+   "clearX": 11,
+   "keep": 4,
+   "risk": 0.4,
+   "holdGain": 0.04,
+   "priorW": 0.15,
+   "p0": 0.914,
+   "slope": 0.06,
+   "floor": 0.55,
+   "frontD": 1.8,
+   "underD": 1.2,
+   "poachF": 0.308,
+   "dkeep": 0.87
+  },
+  "note": "Named cuts with searched spots: dump further off on the break side, shorter unders, more patient early. Beat Energy 54/100 (300 games), 15% hucks."
  }
 ]
