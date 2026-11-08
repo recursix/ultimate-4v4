@@ -85,8 +85,9 @@
     s.rand = rng(s.seed);
     return s;
   }
-  function snapshot(s) { const c = clone(Object.assign({}, s, { rand: null, flight: s.flight && Object.assign({}, s.flight, { th: null }) })); c._flightTh = s.flight && s.flight.th; return c; }
-  function restore(c) { const s = clone(Object.assign({}, c, { _flightTh: null })); if (s.flight) s.flight.th = c._flightTh; s.rand = rng(Math.floor(c.t * 1000) + c.seed); delete s._flightTh; return s; }
+  // the throw options (lastSearch) carry trajectory functions a clone would strip: keep them by reference, like the flight's
+  function snapshot(s) { const c = clone(Object.assign({}, s, { rand: null, lastSearch: null, flight: s.flight && Object.assign({}, s.flight, { th: null }) })); c._flightTh = s.flight && s.flight.th; c._search = s.lastSearch; return c; }
+  function restore(c) { const s = clone(Object.assign({}, c, { _flightTh: null, _search: null })); if (s.flight) s.flight.th = c._flightTh; s.lastSearch = c._search || null; s.rand = rng(Math.floor(c.t * 1000) + c.seed); delete s._flightTh; delete s._search; return s; }
 
   // Two energy tanks (sandbox/anim-board, Energy section):
   //  burst (s.energy, phosphocreatine): ~8 s of all-out effort, refills with a 30 s time constant; gates top

@@ -194,10 +194,10 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
       <button class="btn dbg" id="wait" title="Let 0.5 s pass while you stand still (Space)">Wait 0.5 s</button>
       <button class="btn" id="auto" aria-pressed="false" title="Let the engine play every player (P)">Let it play</button>
       <label class="fld" for="speed">Speed<select id="speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
-      <span class="seg dbg"><button class="btn" id="stepb" title="Back 0.25 s (←, Shift+← for 1 s)" aria-label="Step back">◀</button><button class="btn" id="stepf" title="Forward 0.25 s (→, Shift+→ for 1 s)" aria-label="Step forward">▶</button></span>
+      <span class="seg"><button class="btn" id="stepb" title="Back 0.25 s (←, Shift+← for 1 s)" aria-label="Step back">◀</button><button class="btn" id="stepf" title="Forward 0.25 s (→, Shift+→ for 1 s)" aria-label="Step forward">▶</button></span>
  <button class="btn dbg" id="tele" aria-pressed="false" title="Drag any player without time passing (or hold Shift)">Teleport</button>
       <button class="btn dbg" id="vision" aria-pressed="false" title="Show where the thrower thinks players are when they are wrong (V)">Vision</button>
-      <div class="scrub dbg"><label for="hist">Time</label><input type="range" id="hist" min="0" max="0" value="0"><span id="histt"></span></div>
+      <div class="scrub"><label for="hist">Time</label><input type="range" id="hist" min="0" max="0" value="0"><span id="histt"></span></div>
     </div>
     <section class="howto smp" aria-labelledby="howto-h">
       <h3 id="howto-h">How to play</h3>
@@ -206,6 +206,7 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
         <li>Click a player, then <b>Play as</b> them (or click them again). The AI keeps playing everyone else.</li>
         <li>Click or drag on the field to run there. Get open and your teammates look for you.</li>
         <li>With the disc, click a purple throw (or any spot) and it goes as soon as it's open.</li>
+        <li>Step through time with ◀ ▶ (or the arrow keys, Shift for 1 s) and the Time slider. Rewind, give a different order, and play it out again from there.</li>
       </ol>
       <details><summary>More about the simulation</summary><div id="more"></div><p class="hint">The full version with step-by-step tools: <a href="debug.html">debug mode</a>.</p></details>
     </section>
@@ -224,7 +225,7 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
 
 <script src="sim.js?v=b5f471e7"></script>
 <script src="engine.js?v=a6d92315"></script>
-<script src="game.js?v=5ac47c80"></script>
+<script src="game.js?v=74ea6186"></script>
 <script>
 (() => {
 const G = window.UltiGame, SIM = window.UltiSim, ENG = window.UltiEngine;
@@ -360,7 +361,10 @@ function figure(t, dn){
 const SIMPLE = window.ULTI_MODE === 'simple';
 if (SIMPLE) document.documentElement.classList.add('simple');
 const LIVE = () => autoOn || SIMPLE;   // clicks select, Play as takes over, the field sends your player
-const meIdx = () => S && S.user ? S.user.i : -1;   // the player you control in live play (Let it play)
+const meIdx = () => S && S.user ? S.user.i : -1;
+// An order given after rewinding starts a new branch: drop the recorded future so ▶ and Play simulate from here
+function forkHist(){ if (hi < hist.length - 1) { hist = hist.slice(0, hi + 1); evals = evals.filter(e => e[0] <= S.t); } }
+for (const k of ['userGo', 'userThrow', 'setUser']) { const f = G[k]; G[k] = (...a) => { forkHist(); return f(...a); }; }   // the player you control in live play (Let it play)
 let S = null, ctrl = -1, focus = 2, hist = [], hi = 0, evals = [], drag = null, autoOn = false, hover = null, opts = [], scen = {}, ready = false;
 
 /* ---------- scenarios: built-in + playbook steps ---------- */
