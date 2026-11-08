@@ -235,14 +235,20 @@
     return [Math.max(4, Math.min(28, Hd[0] + depth)), Math.max(2.5, Math.min(15.5, s.pos[i][1]))];
   }
   // the mark stands on the -y side, so -y is the break side: the dump sits there, ~5 m off, out of the open lanes
-  function dumpHome(Hd) { return clampF(Hd[1] - 4 >= 1 ? [Hd[0] - 3.2, Hd[1] - 4] : [Hd[0] - 5, Math.max(1, Hd[1] - 1.5)], 0.6); }
+  // Pinned in a corner (own goal line, break-side sideline) there is no room back: it falls through to the open side.
+  function awayFrom(Hd, offs, minD) {
+    for (const o of offs) { const T = clampF([Hd[0] + o[0], Hd[1] + o[1]], 0.6); if (dist(T, Hd) >= minD) return T; }
+    return clampF([Hd[0] + offs[offs.length - 1][0], Hd[1] + offs[offs.length - 1][1]], 0.6);
+  }
+  const DUMP_OFFS = [[-3.2, -4], [-4.5, -2], [-5, -0.5], [-2, -5], [-3.2, 4], [-1, 5], [0.5, 5]];
+  function dumpHome(Hd) { return awayFrom(Hd, DUMP_OFFS, 4.5); }
 
   function offenseOptions(s, i) {
     const Hd = discPoint(s), O = s.pos[i], { dump } = roles(s), opts = [];
     const push = (kind, label, T) => opts.push({ kind, label, target: clampF(T, 0.6) });
     if (i === dump) {
       push('set', 'sit as the dump', dumpHome(Hd));
-      push('dump-back', 'dump: back and away', Hd[1] - 5.5 >= 0.8 ? [Hd[0] - 2, Hd[1] - 5.5] : [Hd[0] - 6, Hd[1] + 1]);
+      push('dump-back', 'dump: back and away', awayFrom(Hd, [[-2, -5.5], [-6, 1], [-6, -1], [-2, 5.5], [0, 6]], 5));
       // up the line on the dump's own side: never across the thrower's face
       const up = O[1] <= Hd[1] ? (Hd[1] - 4 >= 0.8 ? -4 : -Math.max(1.5, Hd[1] - 0.8)) : 4;
       push('dump-up', 'dump: up the line', [Hd[0] + 4, Hd[1] + up]);
@@ -981,8 +987,8 @@
   function randomSetup(seed, H0) {
     const rand = rng(seed * 7919 + 3), U = (a, b) => a + rand() * (b - a);
     const H = H0 ? H0.slice() : [U(3, 20), U(2, 16)];
-    const mid = H[1] < 9 ? 1 : -1;                       // the dump sits toward the middle
-    const O2 = clampF([H[0] - U(2, 4), H[1] + mid * U(3, 5)], 1);
+    // the dump lines up where it plays (dumpHome): ~5 m off on the break side, open side when pinned in a corner
+    const O2 = clampF(add(dumpHome(H), [U(-0.7, 0.7), U(-0.7, 0.7)]), 1);
     const split = rand() < 0.35, sy = U(6, 12);
     const O3 = clampF([Math.min(H[0] + U(7, 10), 26), split ? U(3, 7) : sy + U(-1, 1)], 1);
     const O4 = clampF([Math.min(H[0] + U(12, 17), 28), split ? U(11, 15) : sy + U(-1, 1)], 1);
@@ -991,6 +997,8 @@
     for (const [o, d] of [['O2', 'D2'], ['O3', 'D3'], ['O4', 'D4']]) {
       const u = unit(add(unit(sub(H, pos[o])), [0, 0.6]));
       pos[d] = clampF(add(pos[o], mul(u, U(0.9, 1.6))), 0.4);
+      // no double team at the line-up either: a defender whose player is off the thrower stays out of 3 m
+      if (dist(pos[o], H) >= DOUBLE_R && dist(pos[d], H) < DOUBLE_R + 0.3) pos[d] = clampF(add(H, mul(unit(sub(pos[d], H)), DOUBLE_R + 0.3)), 0.4);
     }
     return { title: 'Random spot', holder: 'O1', pos, stall: 0 };
   }
