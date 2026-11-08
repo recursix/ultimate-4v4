@@ -17,8 +17,28 @@
   const CATCH_RADIUS = 1.5;
   // Patience: early in the count a rec thrower only throws a clearly open look; the bar drops as the stall climbs.
   let PATIENCE = { p0: 0.95, slope: 0.06, floor: 0.55 };
-  const patience = stall => Math.max(PATIENCE.floor, PATIENCE.p0 - PATIENCE.slope * stall);
+  const patience = (stall, P) => P && P.p0 != null ? Math.max(P.floor, P.p0 - P.slope * stall) : Math.max(PATIENCE.floor, PATIENCE.p0 - PATIENCE.slope * stall);
   let RISK = 0.4; const PRIOR_W = 0.15, HOLD_GAIN = 0.04;   // rec handlers avoid risky throws (risk weight), and unusual ones (prior)
+  // Per-team tactics (the scripted spots and the thrower's habits). Both teams use TDEF unless a search
+  // (rl/js/tune.js) gives one team its own; the offense reads its team's, the defense its own.
+  const TDEF = { dumpBack: 3.2, dumpSide: 4, stackNear: 8, stackFar: 14, underX: 5.5, underY: 4, deepX: 16, inX: 7.5, clearX: 11, keep: 4,
+    risk: null, holdGain: HOLD_GAIN, priorW: PRIOR_W, p0: null, slope: 0.06, floor: 0.55, frontD: 1.8, underD: 1.2, poachF: 0.38, dkeep: 0.87 };
+  let TP = [Object.assign({}, TDEF), Object.assign({}, TDEF)];
+  const setTeamParams = (a, b) => { TP = [Object.assign({}, TDEF, a || {}), Object.assign({}, TDEF, b || {})]; };
+  const OP = s => TP[s.flipped ? 1 : 0], DP = s => TP[s.flipped ? 0 : 1];
+  // research variants (team params): vocab 'grid' = cuts to any of 12 directions x 3 distances instead of the
+  // named cuts; coord 'pair' = two teammates can move together (a clear + a cut) when the joint move is worth
+  // more than either alone; oneCutter false = drop the one-cutter-at-a-time rule
+  const CUTS = ['under', 'deep', 'in', 'up', 'cut'], isCut = k => CUTS.includes(k);
+  const isBusy = k => isCut(k) || k === 'clear' || k.startsWith('dump-');
+  function cutTag(Hd, T) {
+    const dx = T[0] - Hd[0], depth = dx < -0.5 ? 'back' : dx < 8 ? 'under' : dx < 14 ? 'mid' : 'deep';
+    const side = Math.abs(T[1] - 9) < 3 ? 'middle' : T[1] >= Hd[1] ? 'open' : 'break';
+    return depth + '-' + side;
+  }
+  // exploration for self-play data only: sample near-best options instead of always the best
+  const EXPLORE = { T: 0 };
+  const setExplore = o => Object.assign(EXPLORE, o);
   const USER_HOLD = 1.0;   // seconds an offensive player you moved keeps your spot (a defender stays parked until the next throw)
   // Energy: sprinting above cruise speed drains a burst bucket; jogging or standing refills it.
   const VTOP = SIM.P.vmax, VCRUISE = 4.5, VJOG = 3.4;
@@ -83,7 +103,7 @@
     if (s.setup) return VJOG;   // walking to the line-up between points
     if (i < 4) {
       const k = s.macro[i].kind;
-      if ((s.flight && s.flight.recv === i) || ['under', 'deep', 'in', 'up', 'dump-back', 'dump-up', 'catch'].includes(k)) return VTOP;
+      if ((s.flight && s.flight.recv === i) || isCut(k) || k.startsWith('dump-') || k === 'catch') return VTOP;
       return k === 'clear' ? VCRUISE : VJOG;
     }
     const o = i - 4;
@@ -212,6 +232,7 @@
 
   function evalNow(s) {
     if (s.done) return s.done.reason === 'goal' ? 1 : 0;   // a Callahan is 0 for the offense
+    ctxEnergy(s);
     if (s.holder >= 0) return value(s);
     const f = s.flight, r = f.recv;
     const pos = s.pos.map((p, i) => i === r ? f.B.slice() : p), vel = s.vel.map((v, i) => i === r ? [0, 0] : v);
@@ -231,7 +252,7 @@
   function setSpot(s, i, Hd) {
     let rank = 0;
     for (let j = 0; j < 4; j++) if (j !== i && j !== s.holder && s.pos[j][0] < s.pos[i][0] && roles(s).dump !== j) rank++;
-    const depth = rank === 0 ? 8 : 14;
+    const P = OP(s), depth = rank === 0 ? P.stackNear : P.stackFar;
     return [Math.max(4, Math.min(28, Hd[0] + depth)), Math.max(2.5, Math.min(15.5, s.pos[i][1]))];
   }
   // the mark stands on the -y side, so -y is the break side: the dump sits there, ~5 m off, out of the open lanes
@@ -240,29 +261,71 @@
     for (const o of offs) { const T = clampF([Hd[0] + o[0], Hd[1] + o[1]], 0.6); if (dist(T, Hd) >= minD) return T; }
     return clampF([Hd[0] + offs[offs.length - 1][0], Hd[1] + offs[offs.length - 1][1]], 0.6);
   }
-  const DUMP_OFFS = [[-3.2, -4], [-4.5, -2], [-5, -0.5], [-2, -5], [-3.2, 4], [-1, 5], [0.5, 5]];
-  function dumpHome(Hd) { return awayFrom(Hd, DUMP_OFFS, 4.5); }
+  const DUMP_OFFS = [[-4.5, -2], [-5, -0.5], [-2, -5], [-3.2, 4], [-1, 5], [0.5, 5]];
+  function dumpHome(Hd, P) { P = P || TDEF; return awayFrom(Hd, [[-P.dumpBack, -P.dumpSide]].concat(DUMP_OFFS), 4.5); }
 
   function offenseOptions(s, i) {
-    const Hd = discPoint(s), O = s.pos[i], { dump } = roles(s), opts = [];
+    const Hd = discPoint(s), O = s.pos[i], { dump } = roles(s), opts = [], P = OP(s);
     const push = (kind, label, T) => opts.push({ kind, label, target: clampF(T, 0.6) });
     if (i === dump) {
-      push('set', 'sit as the dump', dumpHome(Hd));
+      push('set', 'sit as the dump', dumpHome(Hd, P));
       push('dump-back', 'dump: back and away', awayFrom(Hd, [[-2, -5.5], [-6, 1], [-6, -1], [-2, 5.5], [0, 6]], 5));
       // up the line on the dump's own side: never across the thrower's face
       const up = O[1] <= Hd[1] ? (Hd[1] - 4 >= 0.8 ? -4 : -Math.max(1.5, Hd[1] - 0.8)) : 4;
       push('dump-up', 'dump: up the line', [Hd[0] + 4, Hd[1] + up]);
+      if (P.vocab === 'grid') for (const r of [4.5, 6.5]) for (let a = 60; a <= 300; a += 30) {
+        const T = clampF([Hd[0] + r * Math.cos(a * Math.PI / 180), Hd[1] + r * Math.sin(a * Math.PI / 180)], 0.6);
+        if (dist(T, Hd) > 3.8) push('dump-x', 'dump: ' + cutTag(Hd, T), T);
+      }
+    } else if (P.vocab === 'grid') {
+      push('set', 'hold the stack spot', setSpot(s, i, Hd));
+      for (const r of [4, 8, 13]) for (let k = 0; k < 12; k++) {
+        const a = k * Math.PI / 6, T = clampF([O[0] + r * Math.cos(a), O[1] + r * Math.sin(a)], 0.6);
+        if (dist(T, O) < r - 1.5 || dist(T, Hd) < 3.5) continue;   // off the field, or into the thrower's space
+        const o = { kind: 'cut', label: 'cut ' + cutTag(Hd, T), target: T, tag: cutTag(Hd, T) }; opts.push(o);
+      }
+      push('clear', 'clear out', [Math.min(Hd[0] + P.clearX, 28.5), O[1] > 9 ? 3.5 : 14.5]);
     } else {
       push('set', 'hold the stack spot', setSpot(s, i, Hd));
-      push('under', 'cut under (open side)', [Hd[0] + 5.5, Hd[1] + 4]);
-      push('deep', 'cut deep', [Math.min(Hd[0] + 16, 29.3), O[1] + (O[1] > 9 ? 1 : -1)]);
-      push('in', 'cut into the middle', [Hd[0] + 7.5, 9]);
+      push('under', 'cut under (open side)', [Hd[0] + P.underX, Hd[1] + P.underY]);
+      push('deep', 'cut deep', [Math.min(Hd[0] + P.deepX, 29.3), O[1] + (O[1] > 9 ? 1 : -1)]);
+      push('in', 'cut into the middle', [Hd[0] + P.inX, 9]);
       push('up', 'cut up the line', [Math.min(O[0] + 6, 29.3), O[1]]);
-      push('clear', 'clear out', [Math.min(Hd[0] + 11, 28.5), O[1] > 9 ? 3.5 : 14.5]);
+      push('clear', 'clear out', [Math.min(Hd[0] + P.clearX, 28.5), O[1] > 9 ? 3.5 : 14.5]);
     }
     return opts;
   }
 
+  // Value of several teammates arriving together (each defender chases its player); the clock is the slowest.
+  function scoreMoves(s, moves) {
+    const pos = s.pos.map(p => p.slice()), vel = s.vel.map(v => v.slice()); let tmax = 0;
+    for (const [i, T] of moves) {
+      const O = s.pos[i], d = 4 + i, D = s.pos[d], tc = SIM.tRunFrom(dist(O, T), 0, capOf(s, i));
+      pos[i] = T; vel[i] = mul(unit(sub(T, O)), Math.min(5, dist(O, T) / Math.max(tc, 0.3)));
+      const chase = Math.max(0, tc - 0.3), toT = dist(D, T) - 1.0;
+      if (toT > 0) pos[d] = add(D, mul(unit(sub(T, D)), Math.min(toT, SIM.dRun(chase))));
+      vel[d] = mul(unit(sub(T, D)), 4); tmax = Math.max(tmax, tc);
+    }
+    return value(s, pos, vel, s.holder, s.stall + tmax);
+  }
+  // Pair moves: the best cut of one free player together with any move of another (a clear opening the lane,
+  // a second cut, the dump moving), taken only when worth more than the best single move.
+  function coordPair(s, ctrl, pick) {
+    const free = [0, 1, 2, 3].filter(i => i !== s.holder && i !== ctrl && !isBusy(s.macro[i].kind) && s.macro[i].kind !== 'user' && s.t - s.macro[i].since >= 0.8);
+    if (free.length < 2) return;
+    const ranked = {}; let bestSingle = -1;
+    for (const i of free) { ranked[i] = rankOffense(s, i); if (ranked[i][0]) bestSingle = Math.max(bestSingle, ranked[i][0].v); }
+    let best = null;
+    for (const i of free) for (const a of ranked[i].filter(o => isCut(o.kind)).slice(0, 4))
+      for (const j of free) if (j !== i) for (const b of ranked[j].filter(o => o.kind !== 'set').slice(0, 3)) {
+        const v = scoreMoves(s, [[i, a.target], [j, b.target]]);
+        if (!best || v > best.v) best = { v, i, a, j, b };
+      }
+    if (best && best.v > bestSingle + 0.004) {
+      s.macro[best.i] = { kind: best.a.kind, label: best.a.label, target: best.a.target, since: s.t, v: best.v, pair: best.j };
+      s.macro[best.j] = { kind: best.b.kind, label: best.b.label, target: best.b.target, since: s.t, v: best.v, pair: best.i };
+    }
+  }
   // Value of player i arriving at T: the guarding defender chases with a 0.3 s reaction.
   function scoreArrival(s, i, T) {
     const O = s.pos[i], d = 4 + i, D = s.pos[d];
@@ -287,12 +350,12 @@
     const o = i - 4, O = s.pos[o], Hd = discPoint(s), uvec = sub(Hd, O), u = unit(uvec);
     if (s.holder === o) return add(O, [0.7, -1.0]);
     if (s.flight && s.flight.recv === o) return add(s.flight.B, mul(unit(sub(O, s.flight.B)), 0.8));
-    let T;
+    let T; const P = DP(s);
     switch (style) {
-      case 'front': T = add(O, add(mul(u, 1.8), [0, 0.3])); break;
+      case 'front': T = add(O, add(mul(u, P.frontD), [0, 0.3])); break;
       case 'deep': T = add(O, [1.3, 0.3]); break;
-      case 'poach': T = add(O, mul(uvec, 0.38)); break;
-      default: T = add(O, mul(unit(add(u, [0, 0.6])), 1.2));
+      case 'poach': T = add(O, mul(uvec, P.poachF)); break;
+      default: T = add(O, mul(unit(add(u, [0, 0.6])), P.underD));
     }
     // no double team: only the mark may be within 3 m of the thrower, unless guarding someone who is too
     if (s.holder >= 0 && dist(O, Hd) >= DOUBLE_R && dist(T, Hd) < DOUBLE_R + 0.3) T = add(Hd, mul(unit(sub(T, Hd)), DOUBLE_R + 0.3));
@@ -325,8 +388,9 @@
   }
 
   // pull toward regular play: rec handlers avoid low-percentage throws and unusual throw types
-  function rankThrows(lines) {
-    lines.forEach(l => { l.reg = l.q - RISK * (1 - l.p) + PRIOR_W * Math.log(l.prior || 1); });
+  function rankThrows(lines, P) {
+    const risk = P && P.risk != null ? P.risk : RISK, pw = P ? P.priorW : PRIOR_W;
+    lines.forEach(l => { l.reg = l.q - risk * (1 - l.p) + pw * Math.log(l.prior || 1); });
     return lines.sort((a, b) => b.reg - a.reg);
   }
   function placed(s, i) { if (s.setup) { s.setup.spots[i] = s.pos[i].slice(); s.setup.hold = true; return; } if (i !== s.holder) s.macro[i] = { kind: 'user', label: 'where you put them', target: s.pos[i].slice(), since: s.t }; }
@@ -371,9 +435,9 @@
   }
   function analyseThrower(s, ctrl) {
     const now = searchThrows(s); if (!now) return null;
-    now.lines = rankThrows(addLeads(s, now.lines, ctrl));
+    now.lines = rankThrows(addLeads(s, now.lines, ctrl), OP(s));
     const c = holdRollout(s), later = searchThrows(c);
-    const laterLines = later ? rankThrows(addLeads(c, later.lines, ctrl)) : [];
+    const laterLines = later ? rankThrows(addLeads(c, later.lines, ctrl), OP(s)) : [];
     now.later = laterLines[0] || null;
     now.holdQ = now.later ? now.later.reg : 0;      // value of holding = best throw available in 0.5 s
     now.bestNow = now.lines[0] ? now.lines[0].reg : 0;
@@ -422,10 +486,18 @@
   // ---------------------------------------------------------------------------------------------
   let sideHook = null;
   const setSideHook = f => { sideHook = f; };
+  function softPick(s, ranked, gap) {   // Boltzmann over the gap to the best, in value units
+    const w = ranked.map(o => Math.exp(-gap(o) / EXPLORE.T)), tot = w.reduce((a, b) => a + b, 0);
+    let r = s.rand() * tot; for (let k = 0; k < ranked.length; k++) if ((r -= w[k]) <= 0) return ranked[k];
+    return ranked[0];
+  }
+  const ctxEnergy = s => { if (ENG.setEnergy) ENG.setEnergy(s.energy, s.reserve); };
   function decide(s, ctrl) {
-    if (s.setup) return;   // nobody decides anything until the disc is in
+    if (s.setup) return;
+    ctxEnergy(s);   // nobody decides anything until the disc is in
     const pick = ranked => { // minimal randomness: choose among options within 0.3 points of the best
       if (!ranked.length) return null;
+      if (EXPLORE.T > 0) return softPick(s, ranked, o => Math.abs(o.v - ranked[0].v));
       const close = ranked.filter(o => Math.abs(o.v - ranked[0].v) < 0.003);
       return close[Math.floor(s.rand() * close.length)];
     };
@@ -433,30 +505,32 @@
       if (sideHook) sideHook(s, 'off');   // head-to-head tests: each team can think with its own net
       // offense movers
       let cutting = -1;
-      for (let i = 0; i < 4; i++) if (i !== s.holder && ['under', 'deep', 'in', 'up'].includes(s.macro[i].kind)) cutting = i;
+      for (let i = 0; i < 4; i++) if (i !== s.holder && isCut(s.macro[i].kind)) cutting = i;
+      const TPo = OP(s);
+      if (TPo.coord === 'pair') coordPair(s, ctrl, pick);
       for (let i = 0; i < 4; i++) {
         if (i === s.holder || i === ctrl) continue;
         const m = s.macro[i];
         if (m.kind === 'user') { if (userHeld(s, i)) continue; s.macro[i] = { kind: 'set', label: 'holds the stack spot', target: null, since: s.t - 1 }; }
-        const busy = ['under', 'deep', 'in', 'up', 'dump-back', 'dump-up', 'clear'].includes(m.kind);
+        const busy = isBusy(m.kind);
         if (busy) {
           const arrived = m.target && dist(s.pos[i], m.target) < 0.9;
           if (arrived || s.t - m.since > 2.8) {
             const c = offenseOptions(s, i).find(o => o.kind === 'clear');   // none when this player is now the dump
-            if (c && ['under', 'deep', 'in', 'up'].includes(m.kind)) {
+            if (c && isCut(m.kind)) {
               s.macro[i] = { kind: 'clear', label: 'clears out of the lane', target: c.target, since: s.t };
             } else s.macro[i] = { kind: 'set', label: 'resets', target: null, since: s.t };
           }
           continue;
         }
         let opts = rankOffense(s, i);
-        if (cutting >= 0 && cutting !== i) opts = opts.filter(o => !['under', 'deep', 'in', 'up'].includes(o.kind));
+        if (TPo.oneCutter !== false && cutting >= 0 && cutting !== i) opts = opts.filter(o => !isCut(o.kind));
         if (s.t - m.since < 0.8) opts = opts.filter(o => o.kind === 'set' || o.kind.startsWith('dump'));
         const setV = (opts.find(o => o.kind === 'set') || { v: -1 }).v;
         const best = pick(opts);
         if (best && best.kind !== 'set' && best.v > setV + 0.004) {
           s.macro[i] = { kind: best.kind, label: best.label, target: best.target, since: s.t, v: best.v };
-          if (['under', 'deep', 'in', 'up'].includes(best.kind)) cutting = i;
+          if (isCut(best.kind)) cutting = i;
         } else if (m.kind !== 'set') s.macro[i] = { kind: 'set', label: 'holds the stack spot', target: null, since: s.t };
       }
       // defense styles
@@ -479,10 +553,10 @@
         if (res && res.lines.length) {
           const ranked = res.lines;
           const close = ranked.filter(l => ranked[0].reg - l.reg < 0.004);
-          const line = close[Math.floor(s.rand() * close.length)];
+          const line = EXPLORE.T > 0 ? softPick(s, ranked, l => ranked[0].reg - l.reg) : close[Math.floor(s.rand() * close.length)];
           // throw now unless waiting half a second gives a clearly better throw (a cut still developing);
           // the wait has to pay HOLD_GAIN, because the defense can recover in the meantime
-          const worth = line.reg >= 0.2 && line.reg >= res.holdQ - HOLD_GAIN && line.p >= patience(s.stall);
+          const TPo = OP(s), worth = line.reg >= 0.2 && line.reg >= res.holdQ - TPo.holdGain && line.p >= patience(s.stall, TPo);
           if (worth || (s.stall >= 6.5 && line.p > 0.3)) release(s, line);
           else if (s.stall >= 6.5) release(s, ranked.slice().sort((a, b) => b.p - a.p)[0]);
         }
@@ -537,9 +611,9 @@
         if (i === s.holder) { s.tgt[i] = s.pos[i].slice(); continue; }
         if (s.flight && s.flight.recv === i) { s.tgt[i] = s.flight.B.slice(); continue; }
         if (userHeld(s, i)) { s.tgt[i] = m.target.slice(); continue; }
-        if (m.target && m.kind !== 'set') { s.tgt[i] = m.kind === 'clear' && s.holder >= 0 ? keepOut(m.target, Hd, 4) : m.target.slice(); continue; }
-        s.tgt[i] = roles(s).dump === i ? dumpHome(Hd) : setSpot(s, i, Hd);
-        if (s.holder >= 0) s.tgt[i] = keepOut(s.tgt[i], Hd, 4);   // spacing: stack spots and clears stay off the thrower
+        if (m.target && m.kind !== 'set') { s.tgt[i] = m.kind === 'clear' && s.holder >= 0 ? keepOut(m.target, Hd, OP(s).keep) : m.target.slice(); continue; }
+        s.tgt[i] = roles(s).dump === i ? dumpHome(Hd, OP(s)) : setSpot(s, i, Hd);
+        if (s.holder >= 0) s.tgt[i] = keepOut(s.tgt[i], Hd, OP(s).keep);   // spacing: stack spots and clears stay off the thrower
       } else {
         if (userHeld(s, i)) { s.tgt[i] = s.macro[i].target.slice(); continue; }
         // go for the D once they've read the throw (SIM.P.reactD after the release, as in the throw model)
@@ -549,7 +623,7 @@
         }
         const style = s.flight && s.flight.recv === i - 4 ? 'chase' : s.holder === i - 4 ? 'mark' : (s.dstyle[i] || 'under');
         const T = styleTarget(s, i, style);
-        const keep = style === 'mark' || style === 'chase' ? 0 : 0.87;
+        const keep = style === 'mark' || style === 'chase' ? 0 : DP(s).dkeep;
         s.tgt[i] = [keep * s.tgt[i][0] + (1 - keep) * T[0], keep * s.tgt[i][1] + (1 - keep) * T[1]];
       }
     }
@@ -600,7 +674,7 @@
       const dir = steer(s, i, unit(d), dl);
       // cuts are run through at full speed (the cut ends on arrival and the clear brakes); a sprint to a
       // catch or a reaction slows only at the very end; everything else eases in over 2.5 m
-      const thru = i < 4 && ['under', 'deep', 'in', 'up', 'dump-back', 'dump-up'].includes(s.macro[i].kind);
+      const thru = i < 4 && (isCut(s.macro[i].kind) || s.macro[i].kind.startsWith('dump-'));
       // arriving: brake late and hard (the speed you can still kill in the distance left), not a long ease-in
       const sp0 = len(s.vel[i]), room = Math.max(0, dl - 0.1 - 0.15 * sp0);
       const vdes = mul(dir, Math.min(capOf(s, i), want, thru ? 99 : Math.sqrt(2 * (sprint ? MOVE.B0 : MOVE.BPLAN) * room)));
@@ -1010,6 +1084,6 @@
   }
 
   const setPatience = o => { Object.assign(PATIENCE, o); }, setLook = v => { LOOK = v; };
-  const api = { _move: move, MOVE, setPerception, PERC, setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
+  const api = { cutTag, setTeamParams, TDEF, setExplore, _move: move, MOVE, setPerception, PERC, setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
   if (isNode) module.exports = api; else root.UltiGame = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -160,6 +160,7 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
 <header class="top">
   <h1>Ultimate 4v4 Sandbox<span>engine v0</span></h1>
   <label class="fld" for="scen">Start<select id="scen"></select></label>
+  <label class="fld" for="variant" title="Which AI plays">AI<select id="variant"><option value="classic">Classic</option></select></label>
   <label class="fld" for="dice">Throws<select id="dice"><option value="expected">Likely outcome</option><option value="random">Roll the dice</option></select></label>
   <button class="btn" id="reset">Reset</button>
 </header>
@@ -748,11 +749,30 @@ document.addEventListener('keydown', e => {
 });
 
 /* ---------- boot ---------- */
+// AI variants (variants/index.json): a value net + team tactics, the same for both teams
+let VARIANTS = [], netCache = {};
+async function useVariant(id){
+  const v = VARIANTS.find(x => x.id === id) || VARIANTS[0]; if (!v) return;
+  try {
+    if (!netCache[v.net]) { const r = await fetch(v.net); if (r.ok) netCache[v.net] = await r.json(); }
+    if (netCache[v.net]) { ENG.load(netCache[v.net]); ready = true; }
+  } catch(e) {}
+  G.setTeamParams(v.tac, v.tac);
+  $('#variant').value = v.id; $('#variant').title = v.note || '';
+  try { localStorage.setItem('ulti-variant', v.id); } catch(e) {}
+}
 async function boot(){
   let plays = [];
   try { const r = await fetch('plays.json'); if (r.ok) plays = await r.json(); } catch(e) {}
   loadScenarios(plays);
   try { const r = await fetch('value.json'); if (r.ok) { ENG.load(await r.json()); ready = true; } } catch(e) {}
+  try { const r = await fetch('variants/index.json'); if (r.ok) VARIANTS = await r.json(); } catch(e) {}
+  if (VARIANTS.length) {
+    $('#variant').innerHTML = VARIANTS.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+    let pick = 'classic'; try { pick = localStorage.getItem('ulti-variant') || pick; } catch(e) {}
+    await useVariant(pick);
+  }
+  $('#variant').onchange = async () => { await useVariant($('#variant').value); newGame(); };
   if (!ready) { $('#evtxt').textContent = "The engine's weights didn't load. Moving still works, but the AI can't think."; }
   newGame();
 }

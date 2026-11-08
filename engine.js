@@ -1,6 +1,6 @@
 // UltiEngine: value network + one-move search for the playbook board.
 // V(state) = chance the possession scores, learned from simulated possessions (rl/train_value.py).
-// Features must match rl/game.py:features() exactly.
+// Features must match rl/game.py:features() exactly (the first 39; energy inputs are JS-only).
 (function (root) {
   'use strict';
   const L = 30, W = 18, STALL = 8;
@@ -11,7 +11,9 @@
   const silu = x => x / (1 + Math.exp(-x));
 
   function mlp(f) {
-    let h = f;
+    const nin = NET.features || NET.layers[0].W[0].length;
+    let h = f.length > nin ? f.slice(0, nin) : f;
+    if (h.length < nin) { h = h.slice(); while (h.length < nin) h.push(1); }   // energy-aware net, no energy given: fresh
     const n = NET.layers.length;
     for (let li = 0; li < n; li++) {
       const l = NET.layers[li], o = new Float64Array(l.b.length);
@@ -26,7 +28,12 @@
   }
 
   // pos, vel: arrays of 8 [x,y] (O1..O4, D1..D4); holder 0..3; stall seconds
-  function features(pos, vel, holder, stall) {
+  // Energy (burst, reserve per player, 0..1) is context set by the game each step; nets trained with it
+  // read 55 inputs (39 + 8 x [burst, reserve], same player order), older nets the first 39.
+  let EN = null;
+  const setEnergy = (burst, reserve) => { EN = burst ? [burst, reserve] : null; };
+  function features(pos, vel, holder, stall, en) {
+    en = en || EN;
     const H = pos[holder];
     const others = [0, 1, 2, 3].filter(i => i !== holder).sort((a, b) => pos[b][0] - pos[a][0]);
     const order = [holder].concat(others);
@@ -36,6 +43,7 @@
       const P = pos[o + 4], V = vel[o + 4], O = pos[o];
       f.push(P[0] / L, P[1] / W, V[0] / 7, V[1] / 7, (P[0] - O[0]) / 5, (P[1] - O[1]) / 5);
     }
+    if (en) for (const o of order) f.push(en[0][o], en[1] ? en[1][o] : 1, en[0][o + 4], en[1] ? en[1][o + 4] : 1);
     return f;
   }
   const value = (pos, vel, holder, stall) => mlp(features(pos, vel, holder, stall));
