@@ -201,9 +201,9 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
   </aside>
 </div>
 
-<script src="sim.js"></script>
-<script src="engine.js"></script>
-<script src="game.js"></script>
+<script src="sim.js?v=0888ab40"></script>
+<script src="engine.js?v=a6d92315"></script>
+<script src="game.js?v=5ac47c80"></script>
 <script>
 (() => {
 const G = window.UltiGame, SIM = window.UltiSim, ENG = window.UltiEngine;
@@ -809,7 +809,7 @@ async function boot(){
   try { const r = await fetch('plays.json'); if (r.ok) plays = await r.json(); } catch(e) {}
   loadScenarios(plays);
   try { const r = await fetch('value.json'); if (r.ok) { ENG.load(await r.json()); ready = true; } } catch(e) {}
-  try { const r = await fetch('variants/index.json'); if (r.ok) VARIANTS = await r.json(); } catch(e) {}
+  try { const r = await fetch('variants/index.json?v=702d3f88'); if (r.ok) VARIANTS = await r.json(); } catch(e) {}
   if (VARIANTS.length) {
     $('#variant').innerHTML = VARIANTS.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
     let pick = 'classic'; try { pick = localStorage.getItem('ulti-variant') || pick; } catch(e) {}
