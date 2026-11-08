@@ -1,5 +1,35 @@
 [
- {"id": "classic", "name": "Classic", "net": "value.json", "tac": {}, "note": "Named cuts, net trained before energy (sp21)."},
- {"id": "energy", "name": "Energy net", "net": "variants/energy.json", "tac": {}, "note": "Named cuts, net that sees each player's burst and reserve. Beat Classic 58.5/100."},
- {"id": "grid", "name": "Free cuts", "net": "variants/grid.json", "tac": {"vocab": "grid"}, "note": "Cuts to any of 12 directions x 3 distances. Beat Energy 81/100, but 35% hucks."}
+ {
+  "id": "classic",
+  "name": "Classic",
+  "net": "value.json",
+  "tac": {},
+  "note": "Named cuts, net trained before energy (sp21)."
+ },
+ {
+  "id": "energy",
+  "name": "Energy net",
+  "net": "variants/energy.json",
+  "tac": {},
+  "note": "Named cuts, net that sees each player's burst and reserve. Beat Classic 58.5/100."
+ },
+ {
+  "id": "grid",
+  "name": "Free cuts",
+  "net": "variants/grid.json",
+  "tac": {
+   "vocab": "grid"
+  },
+  "note": "Cuts to any of 12 directions x 3 distances. Beat Energy 81/100, but 35% hucks."
+ },
+ {
+  "id": "pair",
+  "name": "Pair moves",
+  "net": "variants/pair.json",
+  "tac": {
+   "coord": "pair",
+   "oneCutter": false
+  },
+  "note": "Two teammates can move together (clear + cut), no one-cutter rule. Lost to Energy 44.5/100, 18% hucks."
+ }
 ]
