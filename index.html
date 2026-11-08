@@ -114,6 +114,9 @@ kbd{font-family:var(--f-mono);font-size:11.5px;border:1px solid var(--line);bord
 .marrow{fill:none;stroke:var(--chalk);stroke-width:.07;stroke-dasharray:.25 .18;opacity:.85}
 .engl{fill:none;stroke:var(--eng);stroke-width:.14;stroke-linecap:round}
 .engl.alt{stroke-dasharray:.35 .2;opacity:.55}
+.intent{fill:none;stroke:var(--eng);stroke-width:.18;stroke-dasharray:.25 .25;animation:intent .6s linear infinite}
+@keyframes intent{to{stroke-dashoffset:-.5}}
+@media (prefers-reduced-motion: reduce){.intent{animation:none}}
 .engb circle{fill:var(--eng)} .engb text{fill:#fff;font-family:var(--f-display);font-weight:700;font-size:.55px;text-anchor:middle;dominant-baseline:central}
 .opt{fill:none;stroke:var(--you);stroke-width:.12;stroke-linecap:round}
 .opt.alt{stroke-dasharray:.3 .2;opacity:.6}
@@ -185,6 +188,7 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
       <button class="btn" id="vision" aria-pressed="false" title="Show where the thrower thinks players are when they are wrong (V)">Vision</button>
       <div class="scrub"><label for="hist">Time</label><input type="range" id="hist" min="0" max="0" value="0"><span id="histt"></span></div>
     </div>
+    <p class="hint"><b>Live play:</b> press Let it play, then click a player to play as them while the AI plays everyone else. Click or drag on the field to run there (Alt to jog). As the handler, click a purple throw and it goes as soon as that window is open (or they hold if it closes), or click any spot: the nearest teammate goes there and you throw when they're open. Esc hands your player back to the AI.</p>
     <p class="hint">Drag <b>any player</b>: time moves with them and everyone else reacts. Stop moving and time stops. A fast drag sprints and uses up the player's burst: their head darkens as it runs out, and over a long point or game their colours fade as their reserve drains, and they get slower. A slow drag (or <kbd>Alt</kbd>) jogs and refills the burst. Players lay out for discs just out of reach, about half come up with it, and they need a moment to get up. Click a player to see their options. <kbd>Shift</kbd>+drag (or Teleport) moves a player without time passing. <kbd>←</kbd> <kbd>→</kbd> step time by 0.25 s (<kbd>Shift</kbd> for 1 s), <kbd>Space</kbd> waits 0.5 s. <kbd>Shift</kbd>+click an attacker to give them the disc. Click any arrow to play it (it plays out at 2×): a purple line throws, a yellow arrow runs that option, a white arrow plays on until that player finishes their move. Play is continuous: after a turnover the other team picks up the disc and attacks the other way (Orange attacks right, Blue left), after a goal the disc stays where it was caught and the other team brings it in from there: everyone walks to a line-up (the field greys out: not live), then the handler picks up the disc and presents it. Drag anyone to change the line-up and press Disc in. <kbd>N</kbd> plays on when you are stepping by hand. Players have bodies: they can't run through each other and steer around traffic. Very short, fast passes are hard to read and get dropped more often (a 3 m flick about 30%), so the AI prefers a push or a floaty touch pass up close, which is slower and easier to get a hand on. Discs fly with lift and drag: they leave the hand fast and slow down as they glide, and a nose-up disc floats and settles at the end. A laser is thrown hard and flat, so it gets there before defenders can react but arrives fast and is harder to hold; a touch pass or a floaty huck hangs and drops softly, easy to catch, but defenders catch up; a hammer or scoober flies upside down, doesn't glide and dives at the end. Throwers also pick the arc: lower and harder, or higher and softer, whichever beats the defenders in the way. Games go to 7; a defender who intercepts in the endzone the offense attacks scores a Callahan, and the team that threw it restarts from its own goal line. Throwers are patient early in the count and take riskier throws as the stall climbs. A disc that passes inside a defender's reach is usually blocked, so the AI curves around them or goes over the top; the disc is drawn tilted (a banked around throw is an oval, a hammer flies upside down and nearly on edge, and is harder to catch). Throwers only know what they see: sharp in the middle of their view, blurry at the edges, nothing behind. A dashed ring marks where they think a player is when that's wrong; a <b>?</b> is a defender behind them they haven't seen since (press <kbd>V</kbd> or Vision to hide it). Only one defender may be within 3 m of the thrower (no double team), and a second defender right next to the thrower is set and reaching like a mark. A defender screened off their player calls a pick: play stops, they walk back, and the disc is checked in at the stall reached plus one (a disc caught by their player during the pick goes back to the thrower).</p>
   </main>
 
@@ -330,6 +334,7 @@ function figure(t, dn){
   const arms = t === 'D' ? `<path class="arm" d="M0 -.6L.72 -.88M0 .6L.72 .88"/>` : '';
   return arms + `<rect class="sh" x="-.46" y="-.74" width=".7" height="1.48" rx=".35"/><circle class="hd" cx=".1" r=".45"/>`;
 }
+const meIdx = () => S && S.user ? S.user.i : -1;   // the player you control in live play (Let it play)
 let S = null, ctrl = -1, focus = 2, hist = [], hi = 0, evals = [], drag = null, autoOn = false, hover = null, opts = [], scen = {}, ready = false;
 
 /* ---------- scenarios: built-in + playbook steps ---------- */
@@ -462,7 +467,7 @@ function draw(){
     });
   }
   // your options
-  if (!autoOn && !s.done && focus >= 0 && focus !== s.holder && !drag) {
+  if ((!autoOn || focus === meIdx()) && !s.done && focus >= 0 && focus !== s.holder && !(drag && drag.kind !== 'live')) {
     opts.slice(0, 3).forEach((op, i) => {
       if (!op.target || (hover && hover.kind === 'move' && hover.i !== i)) return;
       const P = s.pos[focus]; if (dist(P, op.target) < 0.6) return;
@@ -483,6 +488,11 @@ function draw(){
         (b.vis[j] ? '' : `<text x="${r2(B[0])}" y="${r2(B[1])}">?</text>`) + `</g>`;
     }
   }
+  // a throw you asked for, waiting for its window
+  if (s.user && s.user.intent && s.holder === s.user.i) {
+    const it = s.user.intent, H = s.pos[s.holder];
+    o += `<path class="intent" d="M${XF(H)}L${XF(it.B)}"/><circle class="intent" cx="${r2(X(it.B)[0])}" cy="${r2(X(it.B)[1])}" r="${r2(0.5 + 0.6 * Math.max(0, (it.left ?? 1) / 2))}"/>`;
+  }
   // flight path
   if (s.flight && s.flight.th) o += `<path class="flightpath" d="${pathOf(s.flight.th, 0, 1)}"/>`;
   // players
@@ -495,7 +505,7 @@ function draw(){
     else if (dist(Pi, Dp) > 0.5 && (face[i] == null || sp < 0.2)) { const want = Math.atan2(Dp[1] - Pi[1], Dp[0] - Pi[0]); face[i] = face[i] == null ? want : face[i] + 0.25 * Math.atan2(Math.sin(want - face[i]), Math.cos(want - face[i])); }
   }
   for (let i = 0; i < 8; i++) {
-    const P = X(s.pos[i]), pid = PIDS[i], t = pid[0], tm = teamOf(i), me = i === focus && !autoOn, E = s.energy ? s.energy[i] : 1, dn = s.down && s.down[i] > 0;
+    const P = X(s.pos[i]), pid = PIDS[i], t = pid[0], tm = teamOf(i), me = autoOn ? i === meIdx() : i === focus, E = s.energy ? s.energy[i] : 1, dn = s.down && s.down[i] > 0;
     let body;
     if (dn) body = `<g transform="rotate(${r2((face[i] || 0) * 180 / Math.PI)})">${figure(t, dn)}</g>`;
     else {
@@ -562,25 +572,27 @@ function panel(){
   // your options
   const yours = $('#yours');
   const fl = focus >= 0 ? LABELS[PIDS[focus]] : '';
-  if (autoOn) { $('#youh').textContent = 'Options'; yours.innerHTML = '<p class="hint">The engine is playing everyone. Press Let it play again to pause.</p>'; }
+  if (autoOn && meIdx() < 0) { $('#youh').textContent = 'Options'; yours.innerHTML = '<p class="hint">The engine is playing everyone. Click a player to play as them: click or drag on the field to run, and as the handler click a purple throw (or any spot) to throw when it opens. Esc hands them back.</p>'; }
+  else if (autoOn && focus !== meIdx()) { focus = meIdx(); return panel(); }
   else if (focus < 0) { $('#youh').textContent = 'Options'; yours.innerHTML = '<p class="hint">Click a player to see their options, or drag one to move them.</p>'; }
   else if (s.done) { yours.innerHTML = `<p class="hint">${esc(s.done.text)} Use Back or the time slider to try something else.</p>`; }
   else if (focus === s.holder) {
     $('#youh').textContent = fl + "'s throws";
-    const res = s.lastSearch;
+    const res = s.lastSearch, it = s.user && s.user.i === s.holder ? s.user.intent : null;
+    const waitRow = it ? `<div class="row best"><span class="rk">…</span><span>Waiting for the window: ${esc(it.kind === 'line' ? cap(it.name) + ' to ' + LABELS[PIDS[it.to]] : 'throw to ' + LABELS[PIDS[it.to]] + ' where you pointed')}</span><span class="q">${it.left != null ? Math.max(0, it.left).toFixed(1) + ' s' : ''}</span><small>${it.pNow != null ? 'Now ' + pct(it.pNow) + ' to complete. ' : ''}It goes as soon as it's there, or ${LABELS[PIDS[s.holder]]} holds.</small></div>` : '';
     if (!res || !res.lines) yours.innerHTML = '<p class="hint">Wait a moment to look downfield (about 1 s after the catch).</p>';
     else {
       const holdBest = res.holdQ != null && res.holdQ > (res.bestNow ?? 0) + G.HOLD_GAIN;
       const lt = res.later;
-      yours.innerHTML = (holdBest ? `<div class="row best"><span class="rk">1</span><span>Hold half a second${lt ? `: ${esc(lt.throw.name)} to ${LABELS[lt.to]} opens up` : ''}</span><span class="q">${pct(lt ? lt.q : res.holdQ)}</span><small>Waiting gives a better throw than anything now. Press Wait.</small></div>` : '') +
-        res.lines.slice(0, 4).map((l, i) => `<button class="row${!holdBest && i === 0 ? ' best' : ''}" data-throw="${i}"><span class="rk">${i + 1 + (holdBest ? 1 : 0)}</span><span>${esc(cap(l.throw.name))} to ${LABELS[l.to]}${l.lead ? `, ${l.lead} m lead` : ''}${i && res.lines[0].q - l.q <= 0.03 ? '<span class="chip">close</span>' : ''}</span><span class="q">${pct(l.q)}</span><small>${pct(l.p)} to complete, then ${l.throw.goal ? 'goal' : pct(l.vAfter)}${l.reg < l.q - 0.04 ? '. Risky for rec play' : ''}</small></button>`).join('') + '<p class="hint">Ordered for rec play: low-percentage and unusual throws are pushed down a little.</p>';
+      yours.innerHTML = waitRow + (holdBest ? `<div class="row best"><span class="rk">1</span><span>Hold half a second${lt ? `: ${esc(lt.throw.name)} to ${LABELS[lt.to]} opens up` : ''}</span><span class="q">${pct(lt ? lt.q : res.holdQ)}</span><small>Waiting gives a better throw than anything now. Press Wait.</small></div>` : '') +
+        res.lines.slice(0, 4).map((l, i) => `<button class="row${!holdBest && i === 0 ? ' best' : ''}" data-throw="${i}"><span class="rk">${i + 1 + (holdBest ? 1 : 0)}</span><span>${esc(cap(l.throw.name))} to ${LABELS[l.to]}${l.lead ? `, ${l.lead} m lead` : ''}${i && res.lines[0].q - l.q <= 0.03 ? '<span class="chip">close</span>' : ''}</span><span class="q">${pct(l.q)}</span><small>${pct(l.p)} to complete, then ${l.throw.goal ? 'goal' : pct(l.vAfter)}${l.reg < l.q - 0.04 ? '. Risky for rec play' : ''}</small></button>`).join('') + (autoOn ? '<p class="hint">Click a throw (here or its purple line) and it goes when the window is open. Click any spot to point a teammate there and throw when they get open.</p>' : '<p class="hint">Ordered for rec play: low-percentage and unusual throws are pushed down a little.</p>');
     }
   } else if (s.holder >= 0) {
     const isD = focus >= 4;
     $('#youh').textContent = isD ? fl + "'s options (lower is better for the defense)" : fl + "'s options";
     const best = opts.length ? opts[0].v : 0;
     yours.innerHTML = opts.slice(0, 4).map((op, i) => `<button class="row${i === 0 ? ' best' : ''}" data-move="${i}"><span class="rk">${i + 1}</span><span>${esc(cap(op.label))}${i && Math.abs(best - op.v) <= 0.01 ? '<span class="chip">close</span>' : ''}</span><span class="q">${pct(op.v)}</span><small>${isD ? 'offense scoring chance if ' + fl + ' does this' : 'scoring chance when ' + fl + ' gets there'}${op.tc ? `, ${op.tc.toFixed(1)} s run` : ''}</small></button>`).join('') +
-      `<p class="hint">Click an option to run it with ${fl}, or drag ${fl} anywhere.</p>`;
+      (autoOn ? `<p class="hint">You are ${fl}. Click an option or any spot to run there (hold and drag to steer, Alt to jog). Get open and the thrower will look for you.</p>` : `<p class="hint">Click an option to run it with ${fl}, or drag ${fl} anywhere.</p>`);
   } else {
     const me = s.flight && s.flight.recv === focus;
     $('#youh').textContent = fl + "'s options";
@@ -616,7 +628,7 @@ function panel(){
 }
 function computeOpts(){
   opts = [];
-  if (!S || autoOn || S.done || S.holder < 0 || focus < 0 || focus === S.holder) return;
+  if (!S || (autoOn && focus !== meIdx()) || S.done || S.holder < 0 || focus < 0 || focus === S.holder) return;
   opts = focus >= 4 ? G.rankDefense(S, focus) : G.rankOffense(S, focus);
 }
 function render(){ if (!S) return; computeOpts(); draw(); panel(); }
@@ -628,6 +640,7 @@ $('#svg').addEventListener('pointerdown', e => {
   if (!S || !ready) return;
   anim = null;
   const g = e.target.closest('[data-i]'), th = e.target.closest('[data-throw]');
+  if (autoOn) { livePointer(e, g, th); return; }
   if (th && S.holder >= 0 && !S.done) { throwLine(+th.dataset.throw); return; }
   const mv = e.target.closest('[data-move]'); if (mv && !S.done) { runMove(+mv.dataset.move); return; }
   const mc = e.target.closest('[data-macro]'); if (mc && !S.done) { runMacro(+mc.dataset.macro); return; }
@@ -643,9 +656,25 @@ $('#svg').addEventListener('pointerdown', e => {
   if (focus === S.holder && S.holder >= 0 && !S.done && !autoOn) { const B = svgPt(e); const r = G.throwTo(S, B); if (r) { S.evalNow = G.evalNow(S); pushHist(); render(); } }
   else { focus = -1; render(); }
 });
+// Live play: click a player to take them over; click or drag on the field to run; as the handler click a
+// purple throw or a spot (the throw goes when its window opens).
+function livePointer(e, g, th){
+  if (S.done || S.setup && !g) return;
+  const me = meIdx();
+  if (th && me >= 0 && me === S.holder && S.lastSearch && S.lastSearch.lines) { G.userThrow(S, { line: S.lastSearch.lines[+th.dataset.throw] }); render(); return; }
+  const mv = e.target.closest('[data-move]');
+  if (mv && me >= 0 && opts[+mv.dataset.move]) { G.userGo(S, opts[+mv.dataset.move].target, e.altKey); render(); return; }
+  if (g && +g.dataset.i !== me) { G.setUser(S, +g.dataset.i); focus = +g.dataset.i; render(); return; }
+  if (me < 0) { focus = -1; render(); return; }
+  const P = svgPt(e);
+  if (me === S.holder) { if (!g) G.userThrow(S, { B: P }); render(); return; }
+  if (!g) G.userGo(S, P, e.altKey);
+  drag = { kind: 'live', i: me }; e.preventDefault(); $('#svg').setPointerCapture(e.pointerId); render();
+}
 $('#svg').addEventListener('pointermove', e => {
   if (!drag) return;
   const P = svgPt(e);
+  if (drag.kind === 'live') { if (meIdx() === drag.i && S.holder !== drag.i) G.userGo(S, P, e.altKey); return; }
   if (drag.kind === 'tele') { S.pos[drag.i] = P; S.vel[drag.i] = [0, 0]; S.tgt[drag.i] = P.slice(); drag.moved = true; draw(); return; }
   const now = performance.now();
   if (drag.lp) { const dtr = Math.max(0.008, (now - drag.lt) / 1000), v = dist(drag.lp, P) / dtr; drag.ptr = drag.ptr == null ? v : 0.7 * drag.ptr + 0.3 * v; }
@@ -662,6 +691,7 @@ $('#svg').addEventListener('pointermove', e => {
 });
 function endDrag(){
   if (!drag) return;
+  if (drag.kind === 'live') { drag = null; return; }
   if (drag.kind === 'tele') {
     if (!drag.moved && drag.shift && drag.i < 4 && drag.i !== S.holder) { S.holder = drag.i; S.flight = null; S.stall = 0; S.done = null; S.macro[drag.i] = { kind: 'hold', label: 'holds the disc', since: S.t }; }
     if (drag.moved) G.placed(S, drag.i);
@@ -705,11 +735,13 @@ function runMacro(i){
 }
 function throwLine(i){
   const res = S.lastSearch; if (!res || !res.lines[i]) return;
+  if (autoOn) { if (meIdx() === S.holder) { G.userThrow(S, { line: res.lines[i] }); render(); } return; }
   G.release(S, res.lines[i]); S.evalNow = G.evalNow(S); pushHist(); hover = null; render();
   if (S.flight) animate(Math.ceil((S.flight.dur + 0.1) * 20) / 20, -1, null);   // watch the throw arrive
 }
 function runMove(i){
   const op = opts[i]; if (!op || !op.target || focus < 0) return;
+  if (autoOn) { if (focus === meIdx()) { G.userGo(S, op.target); render(); } return; }
   hover = null;
   if (focus >= 4) { S.dstyle[focus] = op.kind; S.macro[focus] = { kind: op.kind, label: op.label, since: S.t }; animate(0.5, -1, null); return; }
   S.macro[focus] = { kind: op.kind, label: op.label, target: op.target.slice(), since: S.t };
@@ -745,6 +777,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'ArrowRight') { e.preventDefault(); stepFwd(e.shiftKey ? 1 : 0.25); }
   else if (e.key === 'z' || e.key === 'Backspace') { e.preventDefault(); back(); }
   else if (e.key === 'p') $('#auto').click();
+  else if (e.key === 'Escape' && S && S.user) { G.setUser(S, -1); render(); }
   else if (e.key === 'r') newGame();
   else if (e.key === 'n' && S && S.done) playOn();
 });

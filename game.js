@@ -39,7 +39,10 @@
   // exploration for self-play data only: sample near-best options instead of always the best
   const EXPLORE = { T: 0 };
   const setExplore = o => Object.assign(EXPLORE, o);
-  const USER_HOLD = 1.0;   // seconds an offensive player you moved keeps your spot (a defender stays parked until the next throw)
+  const USER_HOLD = 1.0;
+  // live play: the player you control. USER_CALL: how much a thrower favours an open look to you (you call for it);
+  // a throw you pick waits up to INTENT_LINE s for its window (INTENT_SPOT s for a spot you point at)
+  const USER_CALL = 0.05, INTENT_LINE = 1.2, INTENT_SPOT = 2.2, INTENT_DT = 0.1;   // seconds an offensive player you moved keeps your spot (a defender stays parked until the next throw)
   // Energy: sprinting above cruise speed drains a burst bucket; jogging or standing refills it.
   const VTOP = SIM.P.vmax, VCRUISE = 4.5, VJOG = 3.4;
   // Layouts: a dive reaches LAY_REACH past normal catching range, the player is down for LAY_DOWN seconds.
@@ -101,6 +104,7 @@
   // speed the AI wants: sprint for cuts, catches and reactions, cruise to clear, jog to reset (and recover)
   function effort(s, i) {
     if (s.setup) return VJOG;   // walking to the line-up between points
+    if (s.macro[i].live && s.macro[i].kind === 'user' && !(s.flight && s.flight.recv === i)) return s.macro[i].jog ? VJOG : VTOP;
     if (i < 4) {
       const k = s.macro[i].kind;
       if ((s.flight && s.flight.recv === i) || isCut(k) || k.startsWith('dump-') || k === 'catch') return VTOP;
@@ -224,7 +228,7 @@
     return [4, 5, 6, 7].map(i => ({ id: PIDS[i], pos: s.pos[i], mark: PIDS[i] === mk || dist(s.pos[i], A) < SET_R, vel: s.vel[i], vmax: capOf(s, i), delay: Math.max(0, s.down[i]) }));
   }
   // a defender you placed stays parked until the next throw; an offensive player for USER_HOLD seconds
-  const userHeld = (s, i) => s.macro[i].kind === 'user' && (i >= 4 ? s.holder >= 0 : s.t - s.macro[i].since < USER_HOLD);
+  const userHeld = (s, i) => s.macro[i].kind === 'user' && (s.macro[i].live ? (i < 4 || s.holder >= 0) : i >= 4 ? s.holder >= 0 : s.t - s.macro[i].since < USER_HOLD);
 
   const SET_R = 2.5, DOUBLE_R = 3;   // a defender this close to the thrower is set like a mark; the double-team radius
   const discPoint = s => s.holder >= 0 ? s.pos[s.holder] : s.flight.B;
@@ -493,8 +497,9 @@
   }
   const ctxEnergy = s => { if (ENG.setEnergy) ENG.setEnergy(s.energy, s.reserve); };
   function decide(s, ctrl) {
-    if (s.setup) return;
-    ctxEnergy(s);   // nobody decides anything until the disc is in
+    if (s.setup) return;   // nobody decides anything until the disc is in
+    ctxEnergy(s);
+    const me = s.user ? s.user.i : -1;   // the player you control in live play: the AI never decides for them
     const pick = ranked => { // minimal randomness: choose among options within 0.3 points of the best
       if (!ranked.length) return null;
       if (EXPLORE.T > 0) return softPick(s, ranked, o => Math.abs(o.v - ranked[0].v));
@@ -509,7 +514,7 @@
       const TPo = OP(s);
       if (TPo.coord === 'pair') coordPair(s, ctrl, pick);
       for (let i = 0; i < 4; i++) {
-        if (i === s.holder || i === ctrl) continue;
+        if (i === s.holder || i === ctrl || i === me) continue;
         const m = s.macro[i];
         if (m.kind === 'user') { if (userHeld(s, i)) continue; s.macro[i] = { kind: 'set', label: 'holds the stack spot', target: null, since: s.t - 1 }; }
         const busy = isBusy(m.kind);
@@ -536,15 +541,18 @@
       // defense styles
       if (sideHook) sideHook(s, 'def');
       for (let i = 4; i < 8; i++) {
-        if (i === ctrl) continue;
+        if (i === ctrl || i === me) continue;
         if (userHeld(s, i)) continue;
         const best = pick(rankDefense(s, i));
         if (best) { s.dstyle[i] = best.kind; s.macro[i] = { kind: best.kind, label: best.label, target: null, since: s.t }; }
       }
       // thrower
       if (sideHook) sideHook(s, 'off');
-      if (s.holder !== ctrl && s.stall >= LOOK && !(s.down[s.holder] > 0)) {
+      if (s.holder === me) s.lastSearch = analyseThrower(s, -1);   // your throws: you see the whole field
+      else if (s.holder !== ctrl && s.stall >= LOOK && !(s.down[s.holder] > 0)) {
         const res = analyseThrower(believed(s), ctrl);
+        // you're a teammate calling for it: an open look to you gets a little extra
+        if (res && me >= 0 && me < 4) { res.lines.forEach(l => { if (PIDS.indexOf(l.to) === me) l.reg += USER_CALL; }); res.lines.sort((a, b) => b.reg - a.reg); }
         if (res && res.lines.length && s.belief) {   // keep reading: the best option, sometimes the next one
           const alt = res.lines[1] && s.rand() < 0.35 ? res.lines[1] : res.lines[0];
           s.belief.look = PIDS.indexOf(alt.to);
@@ -915,6 +923,7 @@
       s.energy = swap(s.energy); if (s.reserve) s.reserve = swap(s.reserve); s.down = swap(s.down);
       s.lay = swap(s.lay).map(l => l && Object.assign({}, l, { dir: [-l.dir[0], -l.dir[1]] }));
     }
+    if (s.user) s.user = { i: keep ? s.user.i : (s.user.i + 4) % 8, intent: null };   // you stay the same person
     s.done = null; s.flight = null; s.lastSearch = null; s.stall = 0;
     s.macro = PIDS.map((_, i) => i < 4 ? { kind: 'set', label: 'sets up', target: null, since: s.t } : { kind: 'under', label: STYLE_LABEL.under, since: s.t });
     s.dstyle = PIDS.map(() => 'under');
@@ -1019,11 +1028,76 @@
     return Object.assign({}, s, { pos: s.belief.pos.map(p => p.slice()), vel: s.belief.vel.map(v => v.slice()), tgt: s.tgt.map(p => p.slice()) });
   }
 
+  // ---- live control ----
+  function setUser(s, i) {
+    if (s.user && s.user.i >= 0 && s.macro[s.user.i] && s.macro[s.user.i].live) s.macro[s.user.i] = { kind: 'set', label: 'holds the stack spot', target: null, since: s.t - 1 };
+    s.user = i >= 0 ? { i, intent: null } : null;
+    if (s.user && i !== s.holder) userGo(s, s.pos[i]);
+  }
+  function userGo(s, P, jog) {
+    const u = s.user; if (!u || u.i === s.holder) return;
+    s.macro[u.i] = { kind: 'user', live: true, jog: !!jog, label: jog ? 'jogs where you send them' : 'runs where you send them', target: clampF(P, 0.4), since: s.t };
+  }
+  // a throw you asked for: {line} (one of the proposed throws) or {B} (a spot you pointed at)
+  function userThrow(s, want) {
+    const u = s.user; if (!u || u.i !== s.holder || s.done || s.setup) return null;
+    if (want.line) {
+      const l = want.line;
+      u.intent = { kind: 'line', to: PIDS.indexOf(l.to), B: l.B.slice(), p0: l.p, q0: l.q, name: l.throw.name, t0: s.t, until: s.t + INTENT_LINE, next: s.t };
+    } else {
+      const B = clampF(want.B, 0.4); let r = -1, bd = 1e9;
+      for (let i = 0; i < 4; i++) if (i !== s.holder && dist(s.pos[i], B) < bd) { bd = dist(s.pos[i], B); r = i; }
+      if (r < 0) return null;
+      // the nearest teammate goes where you point
+      if (bd > 0.8) s.macro[r] = { kind: 'cut', label: 'goes where you point', target: B.slice(), since: s.t };
+      u.intent = { kind: 'spot', to: r, B: B.slice(), t0: s.t, until: s.t + INTENT_SPOT, next: s.t };
+    }
+    return checkIntent(s, true);
+  }
+  // is the window open? Release when the throw is about as good as when you asked (or, to a spot, likely enough)
+  function checkIntent(s, now) {
+    const u = s.user, it = u && u.intent; if (!it) return null;
+    if (u.i !== s.holder || s.flight || s.done) { u.intent = null; return null; }
+    if (!now && s.t < it.next - 1e-6) return null;
+    it.next = s.t + INTENT_DT;
+    const A = s.pos[s.holder], defs = defsOf(s, A), r = it.to, R = s.pos[r];
+    let best = null;
+    const tryB = B => {
+      const res = SIM.bestThrow({ A, B, defs, field: FIELD }); if (!res) return;
+      const d = sub(B, R), dl = len(d), vAlong = dl > 1e-6 ? Math.max(0, (s.vel[r][0] * d[0] + s.vel[r][1] * d[1]) / dl) : 0;
+      const arrive = SIM.tRunFrom(dl, vAlong, capOf(s, r));
+      for (const t of res.all) if (arrive <= t.flight + 0.15 && (!best || t.p > best.throw.p)) best = { to: PIDS[r], B: B.slice(), throw: t, lead: dl };
+    };
+    if (it.kind === 'line') {
+      tryB(it.B);
+      if (len(s.vel[r]) > 1) for (const k of [0.5, 1, 1.5]) tryB(clampF(add(R, mul(s.vel[r], k)), 0.4));   // the same cut, a moment later
+      if (best && best.throw.p >= Math.max(0.5, it.p0 - 0.08)) { finishIntent(s, best); return best; }
+    } else {
+      tryB(it.B);
+      if (best && best.throw.p >= 0.6) { finishIntent(s, best); return best; }
+    }
+    it.left = it.until - s.t; it.pNow = best ? best.throw.p : 0;
+    if (s.t >= it.until) {
+      s.log.push({ t: s.t, text: `${LABELS[PIDS[s.holder]]} holds: the ${it.kind === 'line' ? it.name + ' to ' + LABELS[PIDS[r]] : 'throw to ' + LABELS[PIDS[r]]} isn't there anymore${best ? ` (${Math.round(best.throw.p * 100)}%)` : ''}.` });
+      u.intent = null;
+    }
+    return null;
+  }
+  function finishIntent(s, line) {
+    s.user.intent = null;
+    line.q = line.throw.p; release(s, line);
+  }
   function advance(s, dt, ctrl, ctrlPath) {
     let done = 0;
     const steps = Math.max(1, Math.round(dt / SUB));
     for (let k = 1; k <= steps && !s.done; k++) {
       if (s.t >= s.nextDecision - 1e-6) { decide(s, ctrl); s.nextDecision = s.t + DECIDE; }
+      if (s.user && !s.setup && !s.done) {
+        const ui = s.user.i;
+        if (s.user.intent) checkIntent(s);
+        // after a catch, a throw or a turnover the AI must not take your player back: they stay where they are
+        if (ui !== s.holder && !(s.flight && s.flight.recv === ui) && s.macro[ui].kind !== 'user') userGo(s, s.pos[ui]);
+      }
       targets(s, ctrl);
       physics(s, SUB, ctrl, ctrlPath ? ctrlPath(k / steps) : null);
       perceive(s, SUB);
@@ -1084,6 +1158,6 @@
   }
 
   const setPatience = o => { Object.assign(PATIENCE, o); }, setLook = v => { LOOK = v; };
-  const api = { sAtTime, cutTag, setTeamParams, TDEF, setExplore, _move: move, MOVE, setPerception, PERC, setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
+  const api = { setUser, userGo, userThrow, sAtTime, cutTag, setTeamParams, TDEF, setExplore, _move: move, MOVE, setPerception, PERC, setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
   if (isNode) module.exports = api; else root.UltiGame = api;
 })(typeof window !== 'undefined' ? window : globalThis);
