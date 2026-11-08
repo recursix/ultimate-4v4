@@ -42,7 +42,7 @@
   const USER_HOLD = 1.0;
   // live play: the player you control. USER_CALL: how much a thrower favours an open look to you (you call for it);
   // a throw you pick waits up to INTENT_LINE s for its window (INTENT_SPOT s for a spot you point at)
-  const USER_CALL = 0.05, INTENT_LINE = 1.2, INTENT_SPOT = 2.2, INTENT_DT = 0.1;
+  const USER_CALL = 0.05, INTENT_LINE = 1.2, INTENT_SPOT = 2.8, INTENT_DT = 0.1;
   const USER_IDLE = 3.0, USER_AUTO_STALL = 5;   // left idle this long on your spot (a handler: this stall), your player goes on autopilot   // seconds an offensive player you moved keeps your spot (a defender stays parked until the next throw)
   // Energy: sprinting above cruise speed drains a burst bucket; jogging or standing refills it.
   const VTOP = SIM.P.vmax, VCRUISE = 4.5, VJOG = 3.4;
@@ -189,7 +189,7 @@
       // same scale as the throw model: the gap as the time to cover it from a standstill, over a 0.1 s logistic
       // inside their reach: the deeper, the surer (sim.js inReach); a disc that comes at them before they can
       // react (reactD after the release, the mark is already set) gets that much leeway
-      const react = Math.max(0, (mark ? SIM.P.reactMark : SIM.P.reactD) - B0.te);
+      const react = Math.max(0, (mark ? SIM.P.reactMark : SIM.P.reactD) - alertOf(s, d) - B0.te);
       const m = (B0.gap > 0 ? SIM.tRunFrom(B0.gap, 0, 0, SIM.P.tauSprint) : SIM.P.inReach * B0.gap) + react, p = 1 / (1 + Math.exp(m / 0.1));
       if (s.dbg) s.dbg.push({ d: PIDS[d], mark, gap: +B0.gap.toFixed(2), dd: +B0.dd.toFixed(2), r: B0.r, pBlock: +p.toFixed(2), pred: +f.p.toFixed(2), pe: +(f.th.pe||0).toFixed(2), bId: f.th.bId, early: +f.th.early.toFixed(2), type: f.th.type, side: f.th.side, te: +te.toFixed(2), Hd: f.A.map(v=>+v.toFixed(1)), M: s.pos[d].map(v=>+v.toFixed(1)), Q: B0.Q.map(v=>+v.toFixed(1)) });
       const win = s.dice === 'random' ? s.rand() < p : p >= 0.5;
@@ -217,7 +217,7 @@
       const tDisc = (f.th.tAt ? f.th.tAt(u) : u * f.dur) - te;
       const g = dist(s.pos[d], P), dir = g > 1e-6 ? [(P[0] - s.pos[d][0]) / g, (P[1] - s.pos[d][1]) / g] : [0, 0];
       const vp = Math.max(0, V[0] * dir[0] + V[1] * dir[1]);
-      if (Math.max(0, 0.3 - te) + SIM.tRunFrom(Math.max(0, g - r - LAY_REACH * 0.5), vp, cap, SIM.P.tauSprint) <= tDisc) return [P[0], P[1]];
+      if (Math.max(0, 0.3 - alertOf(s, d) - te) + SIM.tRunFrom(Math.max(0, g - r - LAY_REACH * 0.5), vp, cap, SIM.P.tauSprint) <= tDisc) return [P[0], P[1]];
     }
     return null;
   }
@@ -227,7 +227,7 @@
     const defPos = {}; for (let i = 0; i < 4; i++) defPos['D' + (i + 1)] = s.pos[4 + i];
     const mk = SIM.markOf(A, defPos);
     // a second defender standing next to the thrower is set and reaching too, not reacting from scratch
-    return [4, 5, 6, 7].map(i => ({ id: PIDS[i], pos: s.pos[i], mark: PIDS[i] === mk || dist(s.pos[i], A) < SET_R, vel: s.vel[i], vmax: capOf(s, i), delay: Math.max(0, s.down[i]) }));
+    return [4, 5, 6, 7].map(i => ({ id: PIDS[i], pos: s.pos[i], mark: PIDS[i] === mk || dist(s.pos[i], A) < SET_R, vel: s.vel[i], vmax: capOf(s, i), delay: Math.max(0, s.down[i]) - alertOf(s, i) }));
   }
   // a defender you placed stays parked until the next throw; an offensive player for USER_HOLD seconds
   const userHeld = (s, i) => s.macro[i].kind === 'user' && (s.macro[i].live ? (i < 4 || s.holder >= 0) : i >= 4 ? s.holder >= 0 : s.t - s.macro[i].since < USER_HOLD);
@@ -434,6 +434,7 @@
   function addLeads(s, lines, ctrl) {
     let all = lines.filter(l => !(ctrl >= 0 && ctrl < 4 && ctrl !== s.holder && PIDS.indexOf(l.to) === ctrl));
     for (let i = 0; i < 4; i++) if (i !== s.holder && (i === ctrl || len(s.vel[i]) > 2.5) && !(s.down[i] > 0)) all = all.concat(leadLines(s, i));
+    if (COMM.on) for (let i = 0; i < 4; i++) { const it = i !== s.holder && !(s.down[i] > 0) && freshIntent(s, i); if (it) all = all.concat(intentLines(s, i, it.T)); }
     all.sort((a, b) => b.q - a.q);
     const out = [];
     for (const l of all) if (!out.some(o => o.to === l.to && dist(o.B, l.B) < 2.5)) out.push(l);
@@ -460,6 +461,8 @@
     s.flight = { from: s.holder, recv: r, B: line.B.slice(), A: s.pos[s.holder].slice(), t0: s.t, dur: t.flight, p: t.p, ok, name: t.name, th: t, q: line.q,
       mark: PIDS.indexOf(SIM.markOf(s.pos[s.holder], defPos)), tried: [], stall0: s.stall };
     s.flight.set = [4, 5, 6, 7].filter(i => i !== s.flight.mark && dist(s.pos[i], s.flight.A) < SET_R);
+    if (COMM.on && dist(s.flight.A, s.flight.B) > 18) commOf(s).upAt = s.t + 0.2;   // a huck: the defense calls "Up!"
+    if (s.comm) { s.flight.told = !!freshIntent(s, r); s.comm.intent = []; s.comm.wait = []; s.comm.want = []; s.comm.point = null; }
     if (!ok) {   // off target: lands out of the receiver's reach, a little to one side
       const f = s.flight, u = unit(sub(f.B, f.A)), side = s.rand() < 0.5 ? 1 : -1;
       f.miss = clampF(add(f.B, add(mul([-u[1], u[0]], side * 3.2), mul(u, 0.8))), 0);
@@ -535,10 +538,25 @@
         if (s.t - m.since < 0.8) opts = opts.filter(o => o.kind === 'set' || o.kind.startsWith('dump'));
         const setV = (opts.find(o => o.kind === 'set') || { v: -1 }).v;
         const best = pick(opts);
+        if (COMM.on) {   // the dump, close and late in the count: "Dump!"
+          const C = commOf(s), key = s.holder + ':' + Math.round((s.t - s.stall) * 10);
+          if (roles(s).dump === i && s.stall >= COMM.dumpStall && dist(s.pos[i], s.pos[s.holder]) < COMM.dumpR && C.dumpKey !== key) { C.dumpKey = key; say(s, i, 'Dump!', 'dump'); }
+        }
         if (best && best.kind !== 'set' && best.v > setV + 0.004) {
+          if (COMM.on && isCut(best.kind) && !inContact(s, i)) {   // wait for the thrower's eye before cutting
+            const C = commOf(s); if (C.wait[i] == null) C.wait[i] = s.t;
+            const waited = s.t - C.wait[i];
+            if (waited < COMM.waitMax) {
+              if (waited >= COMM.callAfter && !heardFrom(s, i, 'here', 2)) say(s, i, 'Here!', 'here');
+              s.macro[i].label = 'looks for eye contact';
+              C.want[i] = { o: best, t: s.t };   // goes the moment the thrower's eye meets theirs (commStep)
+              continue;
+            }
+          }
           s.macro[i] = { kind: best.kind, label: best.label, target: best.target, since: s.t, v: best.v };
+          if (COMM.on) { const C = commOf(s); C.wait[i] = null; C.want[i] = null; if (isCut(best.kind) && inContact(s, i)) { C.intent[i] = { T: best.target.slice(), t: s.t }; s.macro[i].label = best.label + ' (eye contact)'; } }
           if (isCut(best.kind)) cutting = i;
-        } else if (m.kind !== 'set') s.macro[i] = { kind: 'set', label: 'holds the stack spot', target: null, since: s.t };
+        } else { if (COMM.on) commOf(s).wait[i] = null; if (m.kind !== 'set') s.macro[i] = { kind: 'set', label: 'holds the stack spot', target: null, since: s.t }; }
       }
       // defense styles
       if (sideHook) sideHook(s, 'def');
@@ -550,14 +568,22 @@
       }
       // thrower
       if (sideHook) sideHook(s, 'off');
-      if (s.holder === me) s.lastSearch = analyseThrower(s, -1);   // your throws: you see the whole field
+      if (s.holder === me) {   // your throws: you see the whole field; your head turns to whoever you are throwing to or pointing at
+        s.lastSearch = analyseThrower(s, -1);
+        const it = s.user && s.user.intent, pt = s.comm && s.comm.point, l0 = s.lastSearch && s.lastSearch.lines[0];
+        if (s.belief) s.belief.look = pt ? pt.to : it ? it.to : l0 ? PIDS.indexOf(l0.to) : s.belief.look;
+      }
       else if (s.holder !== ctrl && s.stall >= LOOK && !(s.down[s.holder] > 0)) {
         const res = analyseThrower(believed(s), ctrl);
         // you're a teammate calling for it: an open look to you gets a little extra
-        if (res && me >= 0 && me < 4) { res.lines.forEach(l => { if (PIDS.indexOf(l.to) === me) l.reg += USER_CALL; }); res.lines.sort((a, b) => b.reg - a.reg); }
+        if (res && me >= 0 && me < 4 && (!COMM.on || inContact(s, me) || heardFrom(s, me, null, 2))) { res.lines.forEach(l => { if (PIDS.indexOf(l.to) === me) l.reg += USER_CALL; }); res.lines.sort((a, b) => b.reg - a.reg); }
         if (res && res.lines.length && s.belief) {   // keep reading: the best option, sometimes the next one
           const alt = res.lines[1] && s.rand() < 0.35 ? res.lines[1] : res.lines[0];
           s.belief.look = PIDS.indexOf(alt.to);
+          if (COMM.on) {   // a call turns the head: "Here!" from someone not yet in contact, "Dump!" late in the count
+            for (let j = 0; j < 4; j++) if (j !== s.holder && !inContact(s, j) && heardFrom(s, j, 'here', 0.7) && s.rand() < 0.7) s.belief.look = j;
+            if (s.stall >= 4) for (let j = 0; j < 4; j++) if (j !== s.holder && heardFrom(s, j, 'dump', 1.5) && s.rand() < 0.5) s.belief.look = j;
+          }
         }
         s.lastSearch = res;
         if (res && res.lines.length) {
@@ -926,7 +952,7 @@
       s.lay = swap(s.lay).map(l => l && Object.assign({}, l, { dir: [-l.dir[0], -l.dir[1]] }));
     }
     if (s.user) s.user = { i: keep ? s.user.i : (s.user.i + 4) % 8, intent: null };   // you stay the same person
-    s.done = null; s.flight = null; s.lastSearch = null; s.stall = 0;
+    s.done = null; s.flight = null; s.lastSearch = null; s.stall = 0; s.comm = null;
     s.macro = PIDS.map((_, i) => i < 4 ? { kind: 'set', label: 'sets up', target: null, since: s.t } : { kind: 'under', label: STYLE_LABEL.under, since: s.t });
     s.dstyle = PIDS.map(() => 'under');
     const team = s.flipped ? 'Blue' : 'Orange';
@@ -1013,7 +1039,8 @@
     for (let j = 0; j < 8; j++) {
       if (j === h) { b.pos[j] = H.slice(); b.vel[j] = [0, 0]; b.vis[j] = 2; continue; }
       const P = s.pos[j], r = dist(P, H), th = Math.abs(wrapA(Math.atan2(P[1] - H[1], P[0] - H[0]) - b.gaze));
-      const vis = j === h + 4 || r < PERC.felt ? 2 : th < PERC.fovC ? 2 : th < PERC.fovP ? 1 : 0;
+      let vis = j === h + 4 || r < PERC.felt ? 2 : th < PERC.fovC ? 2 : th < PERC.fovP ? 1 : 0;
+      if (vis === 0 && j < 4 && COMM.on && heardFrom(s, j, null, 1.0)) vis = 1;   // they just called: heard where they are
       b.vis[j] = vis;
       const sig = vis === 2 ? PERC.sigC + PERC.sigCr * r : vis === 1 ? PERC.sigP + PERC.sigPr * r : PERC.sigCall;
       const g = () => { const u = Math.max(1e-9, s.rand()), v = s.rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
@@ -1028,6 +1055,105 @@
   function believed(s) {
     if (!s.belief || s.belief.holder !== s.holder) return s;
     return Object.assign({}, s, { pos: s.belief.pos.map(p => p.slice()), vel: s.belief.vel.map(v => v.slice()), tgt: s.tgt.map(p => p.slice()) });
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Communication. Eye contact: the thrower's gaze meets a teammate who is watching the disc (standing or
+  // jogging they watch it; sprinting away they only glance back now and then). A cutter waits for eye contact
+  // before cutting (up to COMM.waitMax s): with it, the thrower knows where the cut goes and can throw to the
+  // space before the cut shows. A pointed spot is only followed once the teammate sees it. Calls are heard by
+  // everyone nearby, the defense included: "Here!" (a cutter who can't catch the thrower's eye: the gaze turns
+  // to them, but their defender hears it too), "Dump!" (the dump close by, late in the count: the thrower
+  // knows where they are without looking), "Up!" (a defender when a huck goes up: the others react sooner).
+  // ---------------------------------------------------------------------------------------------
+  const COMM = { on: true, waitMax: 1.2, callAfter: 0.5, hear: 22, intentT: 2.5, alertT: 1.5, alert: 0.06, glance: 0.9, glanceOn: 0.3,
+    dumpStall: 3.5, dumpR: 9, pointT: 1.2, flashT: 0.7 };
+  const setComm = o => Object.assign(COMM, typeof o === 'object' ? o : { on: !!o });
+  const commOf = s => s.comm || (s.comm = { calls: [], contact: [], intent: [], alert: [], wait: [], want: [], point: null, dumpKey: null, flash: null, upAt: null });
+  function looksAtDisc(s, j) {
+    const H = s.pos[s.holder], v = s.vel[j], sp = len(v);
+    if (sp < 2) return true;
+    const a = Math.abs(wrapA(Math.atan2(H[1] - s.pos[j][1], H[0] - s.pos[j][0]) - Math.atan2(v[1], v[0])));
+    return a < PERC.fovP || ((s.t + j * 0.37) % COMM.glance) < COMM.glanceOn;
+  }
+  const inContact = (s, j) => !!(s.comm && s.comm.contact[j] != null);
+  function say(s, i, text, kind) {
+    const C = commOf(s); C.calls.push({ t: s.t, i, text, kind }); if (C.calls.length > 16) C.calls.shift();
+    // in earshot: the caller's own defender hears it and gets a head start on the next throw to them
+    if (i < 4 && kind !== 'point' && dist(s.pos[i + 4], s.pos[i]) < COMM.hear) C.alert[i + 4] = s.t;
+  }
+  function heardFrom(s, j, kind, T) {
+    const C = s.comm; if (!C) return null;
+    for (let k = C.calls.length - 1; k >= 0; k--) { const c = C.calls[k]; if (s.t - c.t > T) break; if (c.i === j && c.kind !== 'point' && (!kind || c.kind === kind)) return c; }
+    return null;
+  }
+  const alertOf = (s, d) => s.comm && s.comm.alert[d] != null && s.t - s.comm.alert[d] < COMM.alertT ? COMM.alert : 0;
+  const freshIntent = (s, i) => { const C = s.comm, it = C && C.intent[i]; return it && s.t - it.t < COMM.intentT && s.macro[i].target && dist(s.macro[i].target, it.T) < 1 ? it : null; };
+  // every substep: eye contact, pointing, the defense's "Up!"
+  function commStep(s) {
+    if (!COMM.on) return;
+    const C = commOf(s);
+    if (C.upAt != null && s.t >= C.upAt) {
+      C.upAt = null;
+      if (s.flight && !s.flight.pickup) {
+        let d = 4; for (let k = 5; k < 8; k++) if (dist(s.pos[k], s.flight.B) < dist(s.pos[d], s.flight.B)) d = k;
+        say(s, d, 'Up!', 'up'); for (let k = 4; k < 8; k++) C.alert[k] = s.t;
+      }
+    }
+    if (s.holder < 0 || s.setup || !s.belief) { C.contact = []; return; }
+    const h = s.holder, H = s.pos[h], g = s.belief.gaze;
+    for (let j = 0; j < 4; j++) {
+      if (j === h) { C.contact[j] = null; continue; }
+      const P = s.pos[j], a = Math.abs(wrapA(Math.atan2(P[1] - H[1], P[0] - H[0]) - g));
+      const on = a < PERC.fovC && looksAtDisc(s, j) && dist(P, H) < 35;
+      if (on && C.contact[j] == null) {
+        C.contact[j] = s.t; C.flash = { i: j, h, t: s.t };
+        const w = C.want[j];   // they were waiting for this: the cut starts now, and the thrower knows where it goes
+        if (w && s.t - w.t < DECIDE + 0.1 && s.macro[j].kind === 'set' && !(s.user && s.user.i === j && !s.user.auto)) {
+          const o = w.o; s.macro[j] = { kind: o.kind, label: o.label + ' (eye contact)', target: o.target.slice(), since: s.t, v: o.v };
+          C.intent[j] = { T: o.target.slice(), t: s.t }; C.wait[j] = null; C.want[j] = null;
+        }
+      }
+      else if (!on) C.contact[j] = null;
+    }
+    const pt = C.point;
+    if (pt) {
+      if (pt.from !== h) C.point = null;
+      else if (C.contact[pt.to] != null) {
+        s.macro[pt.to] = { kind: 'cut', label: `goes where ${LABELS[PIDS[h]]} points`, target: pt.B.slice(), since: s.t };
+        C.intent[pt.to] = { T: pt.B.slice(), t: s.t };
+        s.log.push({ t: s.t, text: `${LABELS[PIDS[pt.to]]} sees ${LABELS[PIDS[h]]} point and goes.` });
+        C.point = null;
+      } else if (s.t - pt.t > COMM.pointT) {
+        s.log.push({ t: s.t, text: `${LABELS[PIDS[pt.to]]} doesn't see ${LABELS[PIDS[h]]} point.` });
+        C.point = null;
+      }
+    }
+  }
+  // lines to where a teammate said (by eye contact or a point) they are going, before the cut shows
+  function intentLines(s, i, T, n) {
+    const out = [], A = s.pos[s.holder], P = s.pos[i], defs = defsOf(s, A), d = sub(T, P), dl = len(d);
+    const vAlong = dl > 1e-6 ? Math.max(0, (s.vel[i][0] * d[0] + s.vel[i][1] * d[1]) / dl) : 0, arrive = SIM.tRunFrom(dl, vAlong, capOf(s, i));
+    const res = SIM.bestThrow({ A, B: T, defs, field: FIELD }); if (!res) return out;
+    for (const r of res.all) {
+      if (!r.inBounds || arrive > r.flight + 0.15) continue;
+      let v1 = 1;
+      if (!r.goal) {
+        const pos = s.pos.map((p, j) => j === i ? T.slice() : clampF(add(p, mul(s.vel[j], r.flight))));
+        const vel = s.vel.map((v, j) => j === i ? [0, 0] : v.slice());
+        v1 = value(s, pos, vel, i, 0);
+      }
+      out.push({ kind: 'throw', to: PIDS[i], B: T.slice(), lead: Math.round(dl), throw: r, p: r.p, vAfter: v1, q: r.p * v1, prior: 1, told: true });
+      if (out.length >= (n || 2)) break;
+    }
+    return out;
+  }
+  // you call for it (C): "Here!" as a cutter, "Dump!" as the dump, "Up!" as a defender with a huck in the air
+  function userCall(s) {
+    const u = s.user; if (!u || s.done || s.setup) return null;
+    if (u.i < 4) { if (u.i === s.holder || s.holder < 0) return null; const dump = roles(s).dump === u.i; say(s, u.i, dump ? 'Dump!' : 'Here!', dump ? 'dump' : 'here'); return dump ? 'dump' : 'here'; }
+    if (s.flight && !s.flight.pickup) { say(s, u.i, 'Up!', 'up'); const C = commOf(s); for (let k = 4; k < 8; k++) C.alert[k] = s.t; return 'up'; }
+    return null;
   }
 
   // ---- live control ----
@@ -1052,8 +1178,11 @@
       const B = clampF(want.B, 0.4); let r = -1, bd = 1e9;
       for (let i = 0; i < 4; i++) if (i !== s.holder && dist(s.pos[i], B) < bd) { bd = dist(s.pos[i], B); r = i; }
       if (r < 0) return null;
-      // the nearest teammate goes where you point
-      if (bd > 0.8) s.macro[r] = { kind: 'cut', label: 'goes where you point', target: B.slice(), since: s.t };
+      // the nearest teammate goes where you point (once they see it)
+      if (bd > 0.8) {
+        if (COMM.on) { const C = commOf(s); C.point = { from: s.holder, to: r, B: B.slice(), t: s.t }; say(s, s.holder, 'points', 'point'); }
+        else s.macro[r] = { kind: 'cut', label: 'goes where you point', target: B.slice(), since: s.t };
+      }
       u.intent = { kind: 'spot', to: r, B: B.slice(), t0: s.t, until: s.t + INTENT_SPOT, next: s.t };
     }
     return checkIntent(s, true);
@@ -1114,6 +1243,7 @@
       targets(s, ctrl);
       physics(s, SUB, ctrl, ctrlPath ? ctrlPath(k / steps) : null);
       perceive(s, SUB);
+      commStep(s);
       s.t = Math.round((s.t + SUB) * 1000) / 1000;
       if (s.flight && !s.flight.pickup) s.lastFrom = s.flight.A;
       resolve(s);
@@ -1171,6 +1301,6 @@
   }
 
   const setPatience = o => { Object.assign(PATIENCE, o); }, setLook = v => { LOOK = v; };
-  const api = { setUser, userGo, userThrow, sAtTime, cutTag, setTeamParams, TDEF, setExplore, _move: move, MOVE, setPerception, PERC, setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
+  const api = { COMM, setComm, userCall, setUser, userGo, userThrow, sAtTime, cutTag, setTeamParams, TDEF, setExplore, _move: move, MOVE, setPerception, PERC, setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
   if (isNode) module.exports = api; else root.UltiGame = api;
 })(typeof window !== 'undefined' ? window : globalThis);

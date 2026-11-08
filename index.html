@@ -127,6 +127,10 @@ kbd{font-family:var(--f-mono);font-size:11.5px;border:1px solid var(--line);bord
 .intent{fill:none;stroke:var(--eng);stroke-width:.18;stroke-dasharray:.25 .25;animation:intent .6s linear infinite}
 @keyframes intent{to{stroke-dashoffset:-.5}}
 @media (prefers-reduced-motion: reduce){.intent{animation:none}}
+.eyec{stroke:#fff;stroke-width:.08;stroke-dasharray:.2 .18;fill:none}
+.pointg{stroke:var(--you);stroke-width:.12;fill:none;stroke-dasharray:.25 .2}
+.callb rect{fill:#fff;stroke-width:.08} .callb.O rect{stroke:var(--off)} .callb.D rect{stroke:var(--def)}
+.callb text{fill:#14181a;font-family:var(--f-display);font-weight:700;font-size:.55px;text-anchor:middle;dominant-baseline:central}
 .engn{fill:#fff;font-family:var(--f-display);font-weight:600;font-size:.62px;letter-spacing:.01em;dominant-baseline:central;paint-order:stroke;stroke:rgba(16,24,18,.72);stroke-width:.16px;stroke-linejoin:round;cursor:pointer}
 .engb circle{fill:var(--eng)} .engb text{fill:#fff;font-family:var(--f-display);font-weight:700;font-size:.55px;text-anchor:middle;dominant-baseline:central}
 .opt{fill:none;stroke:var(--you);stroke-width:.12;stroke-linecap:round}
@@ -206,11 +210,13 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
         <li>Click a player, then <b>Play as</b> them (or click them again). The AI keeps playing everyone else.</li>
         <li>Click or drag on the field to run there. Get open and your teammates look for you.</li>
         <li>With the disc, click a purple throw (or any spot) and it goes as soon as it's open.</li>
+        <li>As a cutter, cut when the thrower looks at you (eye contact), or press <b>C</b> to call for it. Calls show as bubbles, and the defense hears them too.</li>
         <li>Step through time with ◀ ▶ (or the arrow keys, Shift for 1 s) and the Time slider. Rewind, give a different order, and play it out again from there.</li>
       </ol>
       <details><summary>More about the simulation</summary><div id="more"></div><p class="hint">The full version with step-by-step tools: <a href="debug.html">debug mode</a>.</p></details>
     </section>
     <p class="hint dbg" id="hint1"><b>Live play:</b> press Let it play, click a player, then Play as them (or click them again): the AI plays everyone else. Click or drag on the field to run there (Alt to jog). As the handler, click a purple throw and it goes as soon as that window is open (or they hold if it closes), or click any spot: the nearest teammate goes there and you throw when they're open. Left idle (3 s on your spot, or stall 5 as the handler) your player goes on autopilot until your next order. Esc, or pausing, hands your player back to the AI.</p>
+    <p class="hint dbg" id="hint3"><b>Communication:</b> players talk the way real teams do. A cutter waits for eye contact with the thrower before cutting (a short white line flashes when their eyes meet): then the thrower knows where the cut is going and can throw to the space before it shows. A cutter who can't catch the thrower's eye calls <i>Here!</i>: the thrower turns to them, but their defender hears it too and reacts a little sooner. The dump calls <i>Dump!</i> when it's close and the count is getting high, so the thrower knows where it is without looking. Defenders call <i>Up!</i> when a huck goes up, and they all react a little faster. A spot you point at as the handler is only followed once that teammate sees it. Press C to call for it yourself.</p>
     <p class="hint dbg" id="hint2">Drag <b>any player</b>: time moves with them and everyone else reacts. Stop moving and time stops. A fast drag sprints and uses up the player's burst: their head darkens as it runs out, and over a long point or game their colours fade as their reserve drains, and they get slower. A slow drag (or <kbd>Alt</kbd>) jogs and refills the burst. Players lay out for discs just out of reach, about half come up with it, and they need a moment to get up. Click a player to see their options. <kbd>Shift</kbd>+drag (or Teleport) moves a player without time passing. <kbd>←</kbd> <kbd>→</kbd> step time by 0.25 s (<kbd>Shift</kbd> for 1 s), <kbd>Space</kbd> waits 0.5 s. <kbd>Shift</kbd>+click an attacker to give them the disc. Click any arrow to play it (it plays out at 2×): a purple line throws, a yellow arrow runs that option, a white arrow plays on until that player finishes their move. Play is continuous: after a turnover the other team picks up the disc and attacks the other way (Orange attacks right, Blue left), after a goal the disc stays where it was caught and the other team brings it in from there: everyone walks to a line-up (the field greys out: not live), then the handler picks up the disc and presents it. Drag anyone to change the line-up and press Disc in. <kbd>N</kbd> plays on when you are stepping by hand. Players have bodies: they can't run through each other and steer around traffic. Very short, fast passes are hard to read and get dropped more often (a 3 m flick about 30%), so the AI prefers a push or a floaty touch pass up close, which is slower and easier to get a hand on. Discs fly with lift and drag: they leave the hand fast and slow down as they glide, and a nose-up disc floats and settles at the end. A laser is thrown hard and flat, so it gets there before defenders can react but arrives fast and is harder to hold; a touch pass or a floaty huck hangs and drops softly, easy to catch, but defenders catch up; a hammer or scoober flies upside down, doesn't glide and dives at the end. Throwers also pick the arc: lower and harder, or higher and softer, whichever beats the defenders in the way. Games go to 7; a defender who intercepts in the endzone the offense attacks scores a Callahan, and the team that threw it restarts from its own goal line. Throwers are patient early in the count and take riskier throws as the stall climbs. A disc that passes inside a defender's reach is usually blocked, so the AI curves around them or goes over the top; the disc is drawn tilted (a banked around throw is an oval, a hammer flies upside down and nearly on edge, and is harder to catch). Throwers only know what they see: sharp in the middle of their view, blurry at the edges, nothing behind. A dashed ring marks where they think a player is when that's wrong; a <b>?</b> is a defender behind them they haven't seen since (press <kbd>V</kbd> or Vision to hide it). Only one defender may be within 3 m of the thrower (no double team), and a second defender right next to the thrower is set and reaching like a mark. A defender screened off their player calls a pick: play stops, they walk back, and the disc is checked in at the stall reached plus one (a disc caught by their player during the pick goes back to the thrower).</p>
   </main>
 
@@ -225,7 +231,7 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
 
 <script src="sim.js?v=b5f471e7"></script>
 <script src="engine.js?v=a6d92315"></script>
-<script src="game.js?v=74ea6186"></script>
+<script src="game.js?v=7f44fdbc"></script>
 <script>
 (() => {
 const G = window.UltiGame, SIM = window.UltiSim, ENG = window.UltiEngine;
@@ -559,6 +565,23 @@ function draw(){
     // action labels live in the side panel ("What everyone is doing"), not on the field
     if (false && lbl) o += `<text class="mlabel" x="${r2(P[0] + 1.1)}" y="${r2(P[1] + (tm === 'D' ? 1.35 : -1.05))}">${esc(lbl)}</text>`;
   }
+  // communication: eye contact (a brief line as the thrower's eye meets a teammate's), a pointed spot, calls as bubbles
+  const C = s.comm;
+  if (C && !s.done) {
+    if (C.flash && s.holder === C.flash.h && s.t >= C.flash.t && s.t - C.flash.t < 0.7 && C.contact[C.flash.i] != null) {
+      const a = X(s.pos[C.flash.h]), b = X(s.pos[C.flash.i]);
+      o += `<line class="eyec" x1="${r2(a[0])}" y1="${r2(a[1])}" x2="${r2(b[0])}" y2="${r2(b[1])}" opacity="${r2(1 - (s.t - C.flash.t) / 0.7)}"/>`;
+    }
+    if (C.point && s.holder === C.point.from) {
+      const a = X(s.pos[C.point.from]), b = X(C.point.B), d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, e2 = [a[0] + (b[0] - a[0]) * 2.2 / d, a[1] + (b[1] - a[1]) * 2.2 / d];
+      o += `<path class="pointg" d="M${f2(a)}L${f2(e2)}" marker-end="url(#ah-Y)"/><circle class="pointg" cx="${r2(b[0])}" cy="${r2(b[1])}" r=".5"/>`;
+    }
+    for (const c of C.calls) {
+      if (c.t > s.t || s.t - c.t > 1.2 || c.i == null || !s.pos[c.i]) continue;
+      const P = X(s.pos[c.i]), w = 0.36 * c.text.length + 0.5, tmc = teamOf(c.i);
+      o += `<g class="callb ${tmc}" transform="translate(${r2(P[0])} ${r2(P[1] - 1.75)})" opacity="${r2(Math.min(1, 1.6 - (s.t - c.t) / 0.75))}"><rect x="${r2(-w / 2)}" y="-.42" width="${r2(w)}" height=".84" rx=".42"/><text>${esc(c.text)}</text></g>`;
+    }
+  }
   // disc
   let D, h = 1;
   if (s.holder >= 0) {   // in the right hand: beside the body on the right of where they face (screen y points down), a little forward
@@ -632,11 +655,13 @@ function panel(){
     $('#youh').textContent = isD ? fl + "'s options (lower is better for the defense)" : fl + "'s options";
     const best = opts.length ? opts[0].v : 0;
     yours.innerHTML = opts.slice(0, 4).map((op, i) => `<button class="row${i === 0 ? ' best' : ''}" data-move="${i}"><span class="rk">${i + 1}</span><span>${esc(cap(op.label))}${i && Math.abs(best - op.v) <= 0.01 ? '<span class="chip">close</span>' : ''}</span><span class="q">${pct(op.v)}</span><small>${isD ? 'offense scoring chance if ' + fl + ' does this' : 'scoring chance when ' + fl + ' gets there'}${op.tc ? `, ${op.tc.toFixed(1)} s run` : ''}</small></button>`).join('') +
-      (autoOn ? (s.user && s.user.auto ? '<p class="hint">On autopilot: the AI is playing for you until your next order.</p>' : '') + `<p class="hint">You are ${fl}. Click an option or any spot to run there (hold and drag to steer, Alt to jog). Get open and the thrower will look for you.</p>` : `<p class="hint">Click an option to run it with ${fl}, or drag ${fl} anywhere.</p>`);
+      (LIVE() ? (s.user && s.user.auto ? '<p class="hint">On autopilot: the AI is playing for you until your next order.</p>' : '') +
+        (!isD && s.user && s.user.i === focus ? `<p><button class="btn" data-act="call">Call for it <kbd>C</kbd></button>${s.comm && s.comm.contact[focus] != null ? ' <span class="chip">eye contact</span>' : ''}</p>` : '') +
+        `<p class="hint">You are ${fl}. Click an option or any spot to run there (hold and drag to steer, Alt to jog). Cut when you have eye contact with the thrower, or call for it: the thrower turns to you, but your defender hears it too.</p>` : `<p class="hint">Click an option to run it with ${fl}, or drag ${fl} anywhere.</p>`);
   } else {
     const me = s.flight && s.flight.recv === focus;
     $('#youh').textContent = fl + "'s options";
-    yours.innerHTML = `<p class="hint">${me ? `The disc is going to ${fl}. Drag ${fl} to the catch spot (dotted line), or press Wait and the engine runs there.` : 'Disc in the air. Press Wait (Space) or ▶ to play on, or drag someone.'}</p>`;
+    yours.innerHTML = LIVE() ? `<p class="hint">${me ? `The disc is going to ${fl}: they run to the catch on their own.` : 'Disc in the air.'}</p>` : `<p class="hint">${me ? `The disc is going to ${fl}. Drag ${fl} to the catch spot (dotted line), or press Wait and the engine runs there.` : 'Disc in the air. Press Wait (Space) or ▶ to play on, or drag someone.'}</p>`;
   }
   // everyone else
   $('#who').innerHTML = PIDS.map((p, i) => `<li><b>${LABELS[p]}</b><span>${S.down && S.down[i] > 0 ? 'on the ground after a layout' : esc(S.macro[i].label || (i < 4 ? 'holds the stack spot' : ''))}<span class="en">burst ${pct(S.energy ? S.energy[i] : 1)}</span>${i === S.holder && S.lastSearch && S.lastSearch.lines && S.lastSearch.lines.length > 1 && S.lastSearch.lines[0].q - S.lastSearch.lines[1].q <= 0.03 ? ' · two good throws' : ''}</span></li>`).join('');
@@ -798,6 +823,7 @@ document.addEventListener('click', e => {
   const a = e.target.closest('[data-act]'); if (!a) return;
   if (a.dataset.act === 'again') newGame();
   if (a.dataset.act === 'playas' && S && focus >= 0) { G.setUser(S, focus); render(); }
+  if (a.dataset.act === 'call' && S) { G.userCall(S); render(); }
   if (a.dataset.act === 'next') playOn();
   if (a.dataset.act === 'discin' && S && S.setup) { G.discIn(S); pushHist(); render(); if (S.setup) animate(20, -1, null, true); }
   if (a.dataset.act === 'back2') { hi = Math.max(0, hi - 8); S = G.restore(hist[hi]); render(); }
@@ -822,6 +848,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'ArrowRight') { e.preventDefault(); stepFwd(e.shiftKey ? 1 : 0.25); }
   else if (e.key === 'z' || e.key === 'Backspace') { e.preventDefault(); back(); }
   else if (e.key === 'p') $('#auto').click();
+  else if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && S && S.user) { G.userCall(S); render(); }
   else if (e.key === 'Escape' && S && S.user) { G.setUser(S, -1); render(); }
   else if (e.key === 'r') newGame();
   else if (e.key === 'n' && S && S.done) playOn();
@@ -845,7 +872,7 @@ function autoLabel(){ if (!SIMPLE) return; const b = $('#auto'); b.textContent =
 async function boot(){
   if (SIMPLE) {
     $('#dice').value = 'random'; focus = -1;   // real games roll the dice; nobody selected yet
-    $('#more').innerHTML = $('#hint1').outerHTML.replace(/class="hint dbg"/, 'class="hint"').replace(/ id="hint1"/, '') + $('#hint2').outerHTML.replace(/class="hint dbg"/, 'class="hint"').replace(/ id="hint2"/, '');
+    $('#more').innerHTML = $('#hint1').outerHTML.replace(/class="hint dbg"/, 'class="hint"').replace(/ id="hint1"/, '') + $('#hint2').outerHTML.replace(/class="hint dbg"/, 'class="hint"').replace(/ id="hint2"/, '') + $('#hint3').outerHTML.replace(/class="hint dbg"/, 'class="hint"').replace(/ id="hint3"/, '');
     autoLabel();
   }
   let plays = [];
