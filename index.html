@@ -117,6 +117,7 @@ kbd{font-family:var(--f-mono);font-size:11.5px;border:1px solid var(--line);bord
 .intent{fill:none;stroke:var(--eng);stroke-width:.18;stroke-dasharray:.25 .25;animation:intent .6s linear infinite}
 @keyframes intent{to{stroke-dashoffset:-.5}}
 @media (prefers-reduced-motion: reduce){.intent{animation:none}}
+.engn{fill:#fff;font-family:var(--f-display);font-weight:600;font-size:.62px;letter-spacing:.01em;dominant-baseline:central;paint-order:stroke;stroke:rgba(16,24,18,.72);stroke-width:.16px;stroke-linejoin:round;cursor:pointer}
 .engb circle{fill:var(--eng)} .engb text{fill:#fff;font-family:var(--f-display);font-weight:700;font-size:.55px;text-anchor:middle;dominant-baseline:central}
 .opt{fill:none;stroke:var(--you);stroke-width:.12;stroke-linecap:round}
 .opt.alt{stroke-dasharray:.3 .2;opacity:.6}
@@ -201,7 +202,7 @@ button.row{cursor:pointer} button.row:hover,.row.hl{border-color:var(--you)}
   </aside>
 </div>
 
-<script src="sim.js?v=0888ab40"></script>
+<script src="sim.js?v=b5f471e7"></script>
 <script src="engine.js?v=a6d92315"></script>
 <script src="game.js?v=5ac47c80"></script>
 <script>
@@ -464,6 +465,9 @@ function draw(){
       if (hover && hover.kind === 'throw' && hover.i !== i) return;
       o += `<path class="engl${i ? ' alt' : ''}" d="${pathOf(l.throw)}" marker-end="url(#ah-E)" opacity="${close ? 1 : 0.45}"/><path class="hit" data-throw="${i}" d="${pathOf(l.throw)}"><title>Throw it: ${esc(l.throw.name)} to ${LABELS[l.to]}</title></path>`;
       o += `<g class="engb" data-throw="${i}" style="cursor:pointer" transform="translate(${r2(X(l.B)[0] + .7)} ${r2(X(l.B)[1] - .7)})"><circle r=".42"/><text>${i + 1}</text></g>`;
+      // the throw's name beside its number (and the arc when the thrower changes it), on the side with room
+      const Bx = X(l.B), arc = SIM.FLY && SIM.FLY[l.throw.type] && !l.throw.over ? (l.throw.arc === 0 ? ' · low' : l.throw.arc === 2 ? ' · lofted' : '') : '', right = Bx[0] < L - 7;
+      o += `<text class="engn" data-throw="${i}" x="${r2(right ? Bx[0] + 1.3 : Bx[0] + .1)}" y="${r2(Bx[1] - .7)}" text-anchor="${right ? 'start' : 'end'}" opacity="${close ? 1 : 0.7}">${esc(l.throw.name + arc)}</text>`;
     });
   }
   // your options

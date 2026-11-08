@@ -268,7 +268,7 @@
       case 'push': return 'push pass';
       case 'float': return 'floaty touch pass';
       case 'io': return 'inside-out ' + hand;
-      case 'oi': return 'around ' + hand;
+      case 'oi': return 'outside-in ' + hand;
       case 'high': return 'high-release ' + hand;
       case 'huck': return hand + ' huck';
       case 'laser': return 'laser ' + hand;
