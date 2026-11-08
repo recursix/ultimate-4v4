@@ -406,12 +406,12 @@
   // Lead a running receiver: aim each throw type at where they will be when it arrives.
   function leadLines(s, i, n) {
     const out = [], A = s.pos[s.holder], P = s.pos[i], V = s.vel[i], defs = defsOf(s, A);
-    const PRIOR = { flat: 1, push: 1, float: .97, io: .92, oi: .92, high: .95, hammer: .9, scoober: .9, blade: .85, huck: .95 };
+    const PRIOR = { flat: 1, push: 1, float: .97, io: .92, oi: .92, high: .9, hammer: .9, scoober: .9, blade: .85, huck: .95, laser: .95, loft: .93 };
     for (const type of SIM.TYPE_ORDER) for (const side of [1, -1]) {
       // the catch spot depends on the flight time, which depends on the spot: one fixed-point step is enough
       const tf = SIM.trajectory(type, A, add(P, mul(V, 0.6)), side).flight;
       const B = clampF(add(P, mul(V, tf)), 0.4);
-      const r = SIM.evalThrow({ A, B, defs, field: FIELD }, type, side); if (!r || !r.inBounds) continue;
+      const r = SIM.evalThrow({ A, B, defs, field: FIELD, arc: 1 }, type, side); if (!r || !r.inBounds) continue;   // usual arc: the lead timing assumes it
       let v1 = 1;
       if (!r.goal) {
         const pos = s.pos.map((p, j) => j === i ? B.slice() : clampF(add(p, mul(s.vel[j], r.flight))));
@@ -1084,6 +1084,6 @@
   }
 
   const setPatience = o => { Object.assign(PATIENCE, o); }, setLook = v => { LOOK = v; };
-  const api = { cutTag, setTeamParams, TDEF, setExplore, _move: move, MOVE, setPerception, PERC, setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
+  const api = { sAtTime, cutTag, setTeamParams, TDEF, setExplore, _move: move, MOVE, setPerception, PERC, setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
   if (isNode) module.exports = api; else root.UltiGame = api;
 })(typeof window !== 'undefined' ? window : globalThis);
