@@ -558,16 +558,22 @@
   // Running model (sandbox/anim-board/RESEARCH.md): propulsion fades with speed (8.5 m/s^2 from a standstill,
   // tau = 0.85 s), braking stays strong down to a stop, and grip caps how fast velocity can rotate, so a
   // sharp cut has to brake (plant) before it can go. The acceleration itself ramps over 0.06 s.
-  const MOVE = { A0: SIM.P.vmax / SIM.P.tauSprint, B0: 8.0, BS: 0.4, ALAT: 6.5, G: 9.0, TC: 0.12, JT: 0.06, BPLAN: 6.5, JOG: 0.7 };
+  const MOVE = { A0: SIM.P.vmax / SIM.P.tauSprint, B0: 8.0, BS: 0.4, ALAT: 6.5, G: 11.0, TC: 0.12, JT: 0.05, BPLAN: 6.5, JOG: 0.7, CUT: 0.45, PIV: 1.2, BPL: 10.5 };
   const clampLen = (a, m) => { const l = len(a); return l > m ? mul(a, m / l) : a; };
   function move(s, i, vdes, sprint, dt) {
-    const v = s.vel[i], sp = len(v), M = MOVE;
+    const v = s.vel[i], sp = len(v), M = MOVE, wl = len(vdes);
     const ades = mul(sub(vdes, v), 1 / M.TC);
-    const h = sp > 0.05 ? mul(v, 1 / sp) : len(vdes) > 0.05 ? unit(vdes) : [1, 0], n = [-h[1], h[0]];
+    // a sharp cut is a plant, not a loop: brake straight along the run (little rotation), and once slow
+    // enough step out toward the new direction (the heading snaps, the body doesn't swing round)
+    const cosA = sp > 0.05 && wl > 0.05 ? (v[0] * vdes[0] + v[1] * vdes[1]) / (sp * wl) : 1;
+    const sharp = cosA < M.CUT, pivotV = Math.min(3, M.PIV + 2 * Math.max(0, cosA + 0.5));
+    const h = sp > 0.05 && !(sharp && sp < pivotV) ? mul(v, 1 / sp) : wl > 0.05 ? mul(vdes, 1 / wl) : [1, 0], n = [-h[1], h[0]];
     let al = ades[0] * h[0] + ades[1] * h[1], at = ades[0] * n[0] + ades[1] * n[1];
     const push = M.A0 * (sprint ? 1 : M.JOG) * pushOf(s, i) * Math.max(0, 1 - sp / VTOP);
-    al = al > 0 ? Math.min(al, push) : Math.max(al, -M.B0 * (1 - M.BS * sp / VTOP));
-    at = Math.max(-M.ALAT, Math.min(M.ALAT, at));
+    const plant = sharp && sp >= pivotV;
+    al = al > 0 ? Math.min(al, push) : Math.max(al, -(plant ? M.BPL : M.B0 * (1 - M.BS * sp / VTOP)));
+    const alat = plant ? M.ALAT * 0.3 : M.ALAT + (M.G - M.ALAT) * Math.max(0, 1 - sp / 2.5);   // slow: free to turn
+    at = Math.max(-alat, Math.min(alat, at));
     const a = clampLen(add(mul(h, al), mul(n, at)), M.G);
     s.acc[i] = add(s.acc[i], mul(sub(a, s.acc[i]), 1 - Math.exp(-dt / M.JT)));
     const nv = add(v, mul(s.acc[i], dt));
@@ -1004,6 +1010,6 @@
   }
 
   const setPatience = o => { Object.assign(PATIENCE, o); }, setLook = v => { LOOK = v; };
-  const api = { setPerception, PERC, setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
+  const api = { _move: move, MOVE, setPerception, PERC, setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
   if (isNode) module.exports = api; else root.UltiGame = api;
 })(typeof window !== 'undefined' ? window : globalThis);
