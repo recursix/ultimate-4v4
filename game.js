@@ -10,7 +10,8 @@
   const FIELD = { L: 30, W: 18, ez: 3, brick: 2 };
   const L = FIELD.L, W = FIELD.W, GOAL_X = L - FIELD.ez;
   const SUB = 0.05, DECIDE = 0.5, STALL = 8;
-  let LOOK = 1.2;
+  let LOOK = 0.4;   // s after a catch before an AI thrower can release (secure the disc, first look)
+  let PREVIEW = false;   // the page sets this: the thrower's options are read from the catch so they can always be shown (headless runs skip it)
   const PIDS = ['O1', 'O2', 'O3', 'O4', 'D1', 'D2', 'D3', 'D4'];
   const LABELS = { O1: 'H1', O2: 'H2', O3: 'C1', O4: 'C2', D1: 'D1', D2: 'D2', D3: 'D3', D4: 'D4' };
   const PLAY = { field: FIELD, labels: LABELS, defense: 'person', stall: STALL };
@@ -573,7 +574,7 @@
         const it = s.user && s.user.intent, pt = s.comm && s.comm.point, l0 = s.lastSearch && s.lastSearch.lines[0];
         if (s.belief) s.belief.look = pt ? pt.to : it ? it.to : l0 ? PIDS.indexOf(l0.to) : s.belief.look;
       }
-      else if (s.holder !== ctrl && s.stall >= LOOK && !(s.down[s.holder] > 0)) {
+      else if (s.holder !== ctrl && !(s.down[s.holder] > 0) && (PREVIEW || s.stall >= LOOK)) {   // a release waits for LOOK
         const res = analyseThrower(believed(s), ctrl);
         // you're a teammate calling for it: an open look to you gets a little extra
         if (res && me >= 0 && me < 4 && (!COMM.on || inContact(s, me) || heardFrom(s, me, null, 2))) { res.lines.forEach(l => { if (PIDS.indexOf(l.to) === me) l.reg += USER_CALL; }); res.lines.sort((a, b) => b.reg - a.reg); }
@@ -586,7 +587,7 @@
           }
         }
         s.lastSearch = res;
-        if (res && res.lines.length) {
+        if (res && res.lines.length && s.stall >= LOOK) {
           const ranked = res.lines;
           const close = ranked.filter(l => ranked[0].reg - l.reg < 0.004);
           const line = EXPLORE.T > 0 ? softPick(s, ranked, l => ranked[0].reg - l.reg) : close[Math.floor(s.rand() * close.length)];
@@ -760,7 +761,9 @@
       const r = sub(s.pos[j], s.pos[i]), dj = len(r), over = BODY - dj;
       if (over <= 0) continue;
       const n = dj > 1e-4 ? mul(r, 1 / dj) : [Math.cos(i + j), Math.sin(i + j)];
-      let wi = i === s.holder ? 0 : i === ctrl ? 0.3 : 1, wj = j === s.holder ? 0 : j === ctrl ? 0.3 : 1;
+      // the thrower is planted; a player walking to a loose disc gets to it (whoever stands on it steps aside)
+      const pk = s.flight && s.flight.pickup ? s.flight.recv : -1;
+      let wi = i === s.holder || i === pk ? 0 : i === ctrl ? 0.3 : 1, wj = j === s.holder || j === pk ? 0 : j === ctrl ? 0.3 : 1;
       if (!wi && !wj) continue;
       const sum = wi + wj; wi /= sum; wj /= sum;
       s.pos[i] = add(s.pos[i], mul(n, -over * wi)); s.pos[j] = add(s.pos[j], mul(n, over * wj));
@@ -1167,6 +1170,12 @@
     u.auto = false;
     s.macro[u.i] = { kind: 'user', live: true, jog: !!jog, label: jog ? 'jogs where you send them' : 'runs where you send them', target: clampF(P, 0.4), since: s.t };
   }
+  // Hold: keep the disc and keep looking (drops a throw you were waiting on; autopilot still steps in at USER_AUTO_STALL)
+  function userHold(s) {
+    const u = s.user; if (!u || u.i !== s.holder || s.done || s.setup) return;
+    u.auto = false; u.intent = null; if (s.comm) s.comm.point = null;
+    s.log.push({ t: s.t, text: `${LABELS[PIDS[u.i]]} holds and looks for something better.` });
+  }
   // a throw you asked for: {line} (one of the proposed throws) or {B} (a spot you pointed at)
   function userThrow(s, want) {
     const u = s.user; if (!u || u.i !== s.holder || s.done || s.setup) return null;
@@ -1300,7 +1309,7 @@
     return { title: 'Random spot', holder: 'O1', pos, stall: 0 };
   }
 
-  const setPatience = o => { Object.assign(PATIENCE, o); }, setLook = v => { LOOK = v; };
-  const api = { COMM, setComm, userCall, setUser, userGo, userThrow, sAtTime, cutTag, setTeamParams, TDEF, setExplore, _move: move, MOVE, setPerception, PERC, setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
+  const setPatience = o => { Object.assign(PATIENCE, o); }, setLook = v => { LOOK = v; }, setPreview = v => { PREVIEW = !!v; };
+  const api = { setPreview, userHold, COMM, setComm, userCall, setUser, userGo, userThrow, sAtTime, cutTag, setTeamParams, TDEF, setExplore, _move: move, MOVE, setPerception, PERC, setSideHook, setPatience, setLook, GAME_TO, setupGo, discIn, nextPossession, varied, randomSetup, HOLD_GAIN, setRisk, VTOP, VCRUISE, VJOG, capOf, RISK, PRIOR_W, rankThrows, think, placed, FIELD, PIDS, LABELS, PLAY, SCENARIOS, STALL, create, advance, snapshot, restore, evalNow, rankOffense, rankDefense, searchThrows, throwTo, release, discPoint, value };
   if (isNode) module.exports = api; else root.UltiGame = api;
 })(typeof window !== 'undefined' ? window : globalThis);
